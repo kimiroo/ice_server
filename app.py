@@ -26,8 +26,8 @@ socketio = SocketIO(app,
                     engineio_logger=False, # Set to True for EngineIO specific logs
                     async_mode='eventlet', # Use eventlet as async mode
                     transports=['websocket', 'polling'],
-                    ping_timeout=5,
-                    ping_interval=1)
+                    ping_timeout=2,
+                    ping_interval=.1)
 
 # Register all Socket.IO event handlers
 socket_events.register_socket_events(socketio)

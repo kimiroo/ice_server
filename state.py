@@ -1,9 +1,9 @@
 import datetime
 
 # --- Configuration Constants ---
-ALIVE_THRESHOLD_MS = 100 # In milliseconds
+ALIVE_THRESHOLD_MS = 2000 # In milliseconds
 RECONNECT_DELAY_SECONDS = 5 # Delay for reconnect attempts
-HA_EVENT_IGNORE_SECONDS = 15 
+HA_EVENT_IGNORE_SECONDS = 15
 
 # --- Room Definitions ---
 ROOM_HTML = 'room_html'

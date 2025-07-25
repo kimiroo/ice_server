@@ -43,6 +43,12 @@ def register_socket_events(sio_instance: SocketIO):
                 join_room(ROOM_HA)
                 log.info(f'HA client \'{client_name}\' (SID: {request.sid}) joined \'{ROOM_HA}\' room.')
 
+            elif client_type == 'test':
+                if not client_name:
+                    log.warning(f'TEST client {request.sid} connected without client name')
+                    emit('error', {'message': 'client name is required for TEST clients'})
+                    return False
+
             else:
                 log.warning(f'Unknown client type for SID: {request.sid}')
                 emit('error', {'message': 'Unknown client type'})
@@ -104,7 +110,7 @@ def register_socket_events(sio_instance: SocketIO):
             log.error(f'Error in handle_disconnect: {e}')
 
     @sio_instance.on('event_ha')
-    def handle_ha_event(data):        
+    def handle_ha_event(data):
         # Check basic event message structure
         event_name = data.get('event', None)
         event_id = data.get('id', None)
@@ -112,28 +118,31 @@ def register_socket_events(sio_instance: SocketIO):
         if not event_name:
             log.error(f'Invalid HA event received: \'{data}\'. HA event must specify \'event\' field.')
             emit('event_result', {
+                'id': event_id,
                 'result': 'failed',
                 'message': 'HA event must specify \'event\' field.'
             })
             return False
-        
+
         if not event_id:
             log.error(f'Invalid HA event received: \'{data}\'. HA event must specify \'id\' field.')
             emit('event_result', {
+                'id': event_id,
                 'result': 'failed',
                 'message': 'HA event must specify \'id\' field.'
             })
             return False
-        
+
         # Ignore when disarmed
         if not state.is_armed:
             log.info(f'HA event \'{event_name}\' ignored. (reason: ICE is disarmed)')
             emit('event_result', {
+                'id': event_id,
                 'result': 'success',
                 'message': 'HA event ignored. (reason: ICE is disarmed)'
             })
             return True
-        
+
         # Check if previous HA event is still valid
         previus_event = state.ha_events_list.get(data.get('event'), None)
         proceed = False
@@ -142,15 +151,16 @@ def register_socket_events(sio_instance: SocketIO):
             proceed = True
         elif not previus_event.get('is_valid', False):
             proceed = True
-        
+
         if not proceed:
             log.info(f'Previous HA event \'{event_name}\' is still valid. Ignoring this event...')
             emit('event_result', {
+                'id': event_id,
                 'result': 'success',
                 'message': 'HA event ignored. (reason: previous event still valid)'
             })
             return True
-        
+
         # Update state and broadcast event
         log.info(f'HA event \'{event_name}\' accepted. Broadcasting event...')
         state.ha_events_list[event_name] = {
@@ -160,6 +170,7 @@ def register_socket_events(sio_instance: SocketIO):
         }
 
         emit('event_result', {
+            'id': event_id,
             'result': 'success',
             'message': 'HA event accepted and broadcasted.'
         })
@@ -178,32 +189,36 @@ def register_socket_events(sio_instance: SocketIO):
         if not event_name:
             log.error(f'Invalid HTML event received: \'{data}\'. HTML event must specify \'event\' field.')
             emit('event_result', {
+                'id': event_id,
                 'result': 'failed',
                 'message': 'HTML event must specify \'event\' field.'
             })
             return False
-        
+
         if not event_id:
             log.error(f'Invalid HTML event received: \'{data}\'. HTML event must specify \'id\' field.')
             emit('event_result', {
+                'id': event_id,
                 'result': 'failed',
                 'message': 'HTML event must specify \'id\' field.'
             })
             return False
-        
+
         # Ignore when disarmed
         if not state.is_armed:
             log.info(f'HTML event \'{event_name}\' ignored. (reason: ICE is disarmed)')
             emit('event_result', {
+                'id': event_id,
                 'result': 'failed',
                 'message': 'ICE is disarmed.'
             })
             return False
-        
+
         # Broadcast event
         log.info(f'HTML event \'{event_name}\' accepted. Broadcasting event...')
 
         emit('event_result', {
+            'id': event_id,
             'result': 'success',
             'message': 'HTML event accepted and broadcasted.'
         })
@@ -228,7 +243,7 @@ def register_socket_events(sio_instance: SocketIO):
         alive_client_list_pc = utils.get_connected_client_list('pc', True)
         alive_client_list_ha = utils.get_connected_client_list('ha', True)
         alive_client_list_html = utils.get_connected_client_list('html', True)
-        
+
         emit('pong', {
             'timestamp': datetime.datetime.now().isoformat(),
             'isArmed': state.is_armed,
