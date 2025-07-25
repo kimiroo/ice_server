@@ -64,7 +64,8 @@ def register_socket_events(sio_instance):
             }
 
             if client_type in ['pc', 'ha']:
-                sio_instance.emit(f'client_connected', {
+                sio_instance.emit(f'client_event', {
+                    'event': 'connected',
                     'client': {
                         'clientName': client_name,
                         'clientType': client_type,
@@ -87,7 +88,8 @@ def register_socket_events(sio_instance):
 
                 if client['type'] in ['pc', 'ha']:
                     # Broadcast
-                    sio_instance.emit('client_disconnected', {
+                    sio_instance.emit('client_event', {
+                        'event': 'disconnected',
                         'client': {
                             'clientName': client['name'],
                             'clientType': client['type'],

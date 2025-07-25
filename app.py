@@ -41,6 +41,7 @@ if __name__ == '__main__':
         worker_pool = eventlet.GreenPool()
         alive_checker_greenlet = worker_pool.spawn(workers.check_alive_status_worker)
         system_checker_greenlet = worker_pool.spawn(workers.check_ice_system_worker)
+        ha_event_manager_greenlet = worker_pool.spawn(workers.manage_ha_event_list_worker)
 
         log.info("Starting Socket.IO server...")
         socketio.run(app,

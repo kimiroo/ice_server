@@ -35,7 +35,7 @@ def check_alive_status_worker():
 
 def check_ice_system():
     """ICE system health check."""
-    # Implement your ICE system specific checks here
+    # TODO: Implement ICE system specific checks here
     pass
 
 def check_ice_system_worker():
@@ -46,3 +46,23 @@ def check_ice_system_worker():
         eventlet.sleep(0.1)
 
     log.info("ICE system checker worker stopped.")
+
+def manage_ha_event_list():
+    """Check and clears HA events list"""
+    time_now = datetime.datetime.now()
+    for event_type, event in list(state.ha_events_list.items()):
+        time_diff = time_now - event['timestamp']
+        time_diff = time_diff.total_seconds() # Convert to float seconds
+
+        if time_diff > state.HA_EVENT_IGNORE_SECONDS:
+            log.info(f"HA Event Type \'{event_type}\' is now considered INVALID.")
+            state.ha_events_list[event_type]['is_valid'] = False
+
+def manage_ha_event_list_worker():
+    """Worker loop for checking HA events list."""
+    log.info("HA event manager worker started.")
+    while state.is_server_up:
+        manage_ha_event_list()
+        eventlet.sleep(0.1)
+
+    log.info("HA event manager worker stopped.")

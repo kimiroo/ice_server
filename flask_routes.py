@@ -50,6 +50,17 @@ def register_api_routes(app_instance, sio_instance):
     @app_instance.route('/api/v1/arm/status', methods=['GET'])
     def get_arm_status():
         return jsonify({'isArmed': state.is_armed})
+    
+    @app_instance.route('/api/v1/ice/status', methods=['GET'])
+    def get_ice_status():
+        return jsonify({'isNormal': state.is_normal})
+    
+    @app_instance.route('/api/v1/status', methods=['GET'])
+    def get_overall_status():
+        return jsonify({
+            'isArmed': state.is_armed,
+            'isNormal': state.is_normal
+        })
 
     @app_instance.route('/connected-clients/<client_type>', methods=['GET'])
     def get_connected_clients_api(client_type):
