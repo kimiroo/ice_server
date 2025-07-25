@@ -110,6 +110,16 @@
             box-shadow: 0 8px 20px rgba(244, 67, 54, 0.4);
         }
 
+        .btn-test {
+            background: linear-gradient(45deg, #2196F3, #1976D2);
+            color: white;
+        }
+
+        .btn-test:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(33, 150, 243, 0.4);
+        }
+
         .btn:disabled {
             opacity: 0.6;
             cursor: not-allowed;
@@ -230,13 +240,13 @@
         </div>
 
         <div class="controls">
-            <button class="btn btn-start" id="startBtn" onclick="startStream()">
+            <button class="btn btn-start" id="startBtn" onclick="arm(true)"> <!--startStream()-->
                 🎬 스트리밍 시작
             </button>
-            <button class="btn btn-stop" id="stopBtn" onclick="stopStream()" disabled>
+            <button class="btn btn-stop" id="stopBtn" onclick="arm(false)"> <!--stopStream()--> <!--disabled-->
                 🛑 스트리밍 중지
             </button>
-            <button class="btn" onclick="testConnection()" style="background: linear-gradient(45deg, #2196F3, #1976D2); color: white;">
+            <button class="btn btn-test" onclick="testConnection()">
                 🔧 연결 테스트
             </button>
         </div>
@@ -299,9 +309,6 @@
             updateStatus('서버에 연결되었습니다', 'connected');
             connectionStatus.textContent = '연결됨';
             connectionRetries = 0;
-
-            // 연결 확인 ping 전송
-            socket.emit('ping');
         });
 
         socket.on('connect_error', function(error) {
@@ -327,14 +334,8 @@
             isStreaming = false;
         });
 
-        socket.on('pong', function(data) {
-            console.log('서버로부터 pong 받음:', data);
-        });
-
         // 비디오 프레임 수신
         socket.on('video_frame', function(data) {
-            console.log('비디오 프레임 수신됨 - 크기:', data.frame ? data.frame.length : 0);
-
             if (isStreaming && data.frame) {
                 try {
                     // 프레임 표시
@@ -376,20 +377,20 @@
             console.log('서버 상태:', data.message);
         });
 
+        socket.on('pong', function(data) {
+            console.log(data);
+        });
+
         // 연결 테스트 함수
         async function testConnection() {
             try {
-                updateStatus('연결 테스트 중...', '');
+                updateStatus('테스트 중...', '');
 
-                // 서버에 테스트 프레임 요청
-                const response = await fetch('/test_frame');
-                const result = await response.json();
+                socket.emit('event_html', {
+                    'event': 'test'
+                })
 
-                if (result.success) {
-                    updateStatus(result.message, 'connected');
-                } else {
-                    updateStatus('테스트 실패: ' + result.message, 'error');
-                }
+                updateStatus('테스트 완료.', '');
             } catch (error) {
                 updateStatus('테스트 오류: ' + error.message, 'error');
             }
@@ -462,6 +463,30 @@
             }
         }
 
+        async function arm(arm) {
+            let endpoint = '';
+            let action = '';
+
+            if (arm) {
+                endpoint = '/arm';
+                action = 'Arm';
+            } else {
+                endpoint = '/disarm';
+                action = 'Disarm';
+            }
+
+            const response = await fetch(endpoint, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            });
+
+            const result = await response.json();
+
+            updateStatus(action + ' result: ' + result)
+        }
+
         // 상태 업데이트
         function updateStatus(message, type) {
             status.textContent = message;
@@ -485,7 +510,8 @@
                 updateStatus('스트림이 중단되었습니다', 'error');
                 connectionStatus.textContent = '스트림 중단';
             }
-        }, 2000);
+            socket.emit('ping')
+        }, 100);
     </script>
 </body>
 </html>

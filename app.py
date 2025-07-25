@@ -3,15 +3,19 @@ from flask_socketio import SocketIO, emit, join_room, leave_room
 import threading
 import time
 import numpy as np
-from datetime import datetime
+import datetime
 import json
 import logging
+import traceback
+import eventlet
 
 from util.rtsp import RTSP
 
 ROOM_HTML = 'room_html'
 ROOM_PC = 'room_pc'
 ROOM_HA = 'room_ha'
+
+ALIVE_THRESHOLD = 100 # in milliseconds
 
 # Logging
 logging.basicConfig(
@@ -33,6 +37,8 @@ socketio = SocketIO(app,
 
 # Variables
 is_armed = False
+is_normal = True
+is_server_up = True
 connected_clients = {}
 
 def identify_client(headers, sid):
@@ -51,17 +57,46 @@ def identify_client(headers, sid):
     # Unknown Cleints
     return 'unknown', None
 
-def get_connected_client_list(client_type: str):
-    return [
-        {
-            'clientName': info['name'],
-            'clientType': info['type'],
-            'connectedTime': info['connected_time'].isoformat(),
-            'sid': sid
-        }
-        for sid, info in connected_clients.items()
-        if client_type == 'all' or info.get('type') == client_type
-    ]
+def get_connected_client_list(client_type: str, only_alive: bool):
+    filtered_list = []
+
+    for sid, client in connected_clients.items():
+        if client_type == 'all' or client['type'] == client_type:
+            if not only_alive or client['alive']:
+                client_obj = {
+                    'clientName': client['name'],
+                    'clientType': client['type'],
+                    'connectedTime': client['connected_time'].isoformat(),
+                    'lastSeen': client['last_seen'].isoformat(),
+                    'alive': client['alive'], 
+                    'sid': sid
+                }
+                filtered_list.append(client_obj)
+
+    return filtered_list
+
+def check_alive_status():
+    time_now = datetime.datetime.now()
+    for sid, client in connected_clients.items():
+        time_diff = time_now - client['last_seen']
+
+        if time_diff > datetime.timedelta(milliseconds=ALIVE_THRESHOLD):
+            connected_clients[sid]['alive'] = False
+        else:
+            connected_clients[sid]['alive'] = True
+
+def check_alive_status_worker():
+    while is_server_up:
+        check_alive_status()
+        time.sleep(0.01)
+
+def check_ice_system():
+    pass
+
+def check_ice_system_worker():
+    while is_server_up:
+        check_ice_system()
+        time.sleep(0.01)
 
 @socketio.on('connect')
 def handle_connect():
@@ -108,7 +143,9 @@ def handle_connect():
         connected_clients[request.sid] = {
             'name': client_name,
             'type': client_type,
-            'connected_time': datetime.now()
+            'connected_time': datetime.datetime.now(),
+            'last_seen': datetime.datetime.now(),
+            'alive': True
         }
 
         if client_type in ['pc', 'ha']:
@@ -117,13 +154,8 @@ def handle_connect():
                     'clientName': client_name,
                     'clientType': client_type,
                     'sid': request.sid
-                },
-                'clientList': {
-                    'pc': get_connected_client_list('pc'),
-                    'ha': get_connected_client_list('ha')
                 }
             })
-
 
     except Exception as e:
         log.error(f'Error in handle_connect: {e}')
@@ -143,59 +175,148 @@ def handle_disconnect():
                 'clientName': client['name'],
                 'clientType': client['type'],
                 'sid': request.sid
-            },
-            'clientList': {
-                'pc': get_connected_client_list('pc'),
-                'ha': get_connected_client_list('ha')
             }
         })
 
     except Exception as e:
         log.error(f'Error in handle_disconnect: {e}')
 
+@socketio.on('event_ha')
+def handle_ha_event():
+
+    if not is_armed:
+        # Ignore event
+        return True
+    pass
+
+@socketio.on('event_html')
+def handle_html_event(data):
+
+    if not is_armed:
+        emit('event_failed', {
+            'result': 'failed',
+            'message': 'ICE is unarmed.'
+        })
+        return False
+    
+    print(data)
+    
+    socketio.emit('event', {
+        'event': data['event'],
+        'eventSource': 'html'
+    })
+
+@socketio.on('ping')
+def handle_ping():
+    # Update last_seen and alive
+    connected_clients[request.sid]['last_seen'] = datetime.datetime.now()
+    connected_clients[request.sid]['alive'] = True
+
+    # Build response body
+    all_client_list_pc = get_connected_client_list('pc', False)
+    all_client_list_ha = get_connected_client_list('ha', False)
+    all_client_list_html = get_connected_client_list('html', False)
+
+    alive_client_list_pc = get_connected_client_list('pc', True)
+    alive_client_list_ha = get_connected_client_list('ha', True)
+    alive_client_list_html = get_connected_client_list('html', True)
+    
+    emit('pong', {
+        'timestamp': datetime.datetime.now().isoformat(),
+        'isArmed': is_armed,
+        'isNormal': is_normal,
+        'clientList': {
+            'pc': all_client_list_pc,
+            'ha': all_client_list_ha,
+            'html': all_client_list_html
+        },
+        'aliveClientCount': {
+            'pc': len(alive_client_list_pc),
+            'ha': len(alive_client_list_ha),
+            'html': len(alive_client_list_html)
+        }
+    })
+
 @app.before_request
 def before_request():
     if request.path.startswith('/socket.io/'):
-        # Socket.IO 핸드셰이크를 위한 특별 처리
+        # Ignore http get/post request on ws endpoint
         pass
 
 @app.route('/')
 def index():
     return render_template('index.html')
 
-@app.route('/arm', methods=['POST'])
+@app.route('/api/v1/arm/status', methods=['POST'])
 def arm():
     global is_armed
 
     # LOGIC HERE
 
+    # notify armed state
+
+    # start/end rtsp stream
+
     is_armed = True
 
-@app.route('/disarm', methods=['POST'])
+    socketio.emit('ice_armed', {
+        'isArmed': is_armed
+    })
+
+    return {'isArmed': is_armed}
+
+@app.route('/api/v1/arm/activate', methods=['POST'])
 def disarm():
     global is_armed
 
     # LOGIC HERE
 
+    # notify armed state
+
+    # start/end rtsp stream
+
     is_armed = False
 
-@app.route('/is-armed', methods=['GET'])
+    socketio.emit('ice_disarmed', {
+        'isArmed': is_armed
+    })
+
+    return {'isArmed': is_armed}
+
+@app.route('/api/v1/arm/deactivate', methods=['GET'])
 def get_is_armed():
     return {'isArmed': is_armed}
 
 @app.route('/connected-clients/<client_type>', methods=['GET'])
 def get_connected_pcs(client_type):
-    clients = get_connected_client_list(client_type)
+    all_client_list = get_connected_client_list(client_type, False)
+    alive_client_list = get_connected_client_list(client_type, True)
+    
     return jsonify({
-        'clients': clients,
-        'count': len(clients)
+        'clients': all_client_list,
+        'aliveClientCount': len(alive_client_list)
     })
 
 if __name__ == '__main__':
 
-    # eventlet 사용으로 변경
-    socketio.run(app,
-                host='0.0.0.0',
-                port=8080,
-                debug=False,
-                use_reloader=True)  # 디버그 모드에서 reloader 비활성화
+    try:
+        worker_pool = eventlet.GreenPool()
+        alive_checker_greenlet = worker_pool.spawn(check_alive_status_worker)
+        system_checker_greenlet = worker_pool.spawn(check_ice_system_worker)
+
+        # Use eventlet
+        socketio.run(app,
+                    host='0.0.0.0',
+                    port=8080,
+                    debug=False,
+                    use_reloader=False)
+
+    except KeyboardInterrupt:
+        log.info('Shutting down... (reason: user interrupt)')
+
+    except Exception as e:
+        log.error(f'Error occured: {e}')
+        traceback.print_exc()
+
+    finally:
+        is_server_up = False
