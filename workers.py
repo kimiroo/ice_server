@@ -50,13 +50,13 @@ def check_ice_system_worker():
 def manage_ha_event_list():
     """Check and clears HA events list"""
     time_now = datetime.datetime.now()
-    for event_type, event in list(state.ha_events_list.items()):
+    for event_name, event in list(state.ha_events_list.items()):
         time_diff = time_now - event['timestamp']
         time_diff = time_diff.total_seconds() # Convert to float seconds
 
         if time_diff > state.HA_EVENT_IGNORE_SECONDS:
-            log.info(f"HA Event Type \'{event_type}\' is now considered INVALID.")
-            state.ha_events_list[event_type]['is_valid'] = False
+            log.info(f"HA Event \'{event_name}\' is now considered INVALID.")
+            state.ha_events_list[event_name]['is_valid'] = False
 
 def manage_ha_event_list_worker():
     """Worker loop for checking HA events list."""

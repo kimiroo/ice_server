@@ -1,7 +1,8 @@
 import datetime
 import logging
 from flask import request
-from flask_socketio import emit, join_room, leave_room
+from flask_socketio import SocketIO, emit, join_room, leave_room
+
 import state
 import utils
 
@@ -11,7 +12,7 @@ ROOM_HTML = state.ROOM_HTML
 ROOM_PC = state.ROOM_PC
 ROOM_HA = state.ROOM_HA
 
-def register_socket_events(sio_instance):
+def register_socket_events(sio_instance: SocketIO):
     """Registers all Socket.IO event handlers with the given SocketIO instance."""
 
     @sio_instance.on('connect')
@@ -103,28 +104,114 @@ def register_socket_events(sio_instance):
             log.error(f'Error in handle_disconnect: {e}')
 
     @sio_instance.on('event_ha')
-    def handle_ha_event():
+    def handle_ha_event(data):        
+        # Check basic event message structure
+        event_name = data.get('event', None)
+        event_id = data.get('id', None)
+
+        if not event_name:
+            log.error(f'Invalid HA event received: \'{data}\'. HA event must specify \'event\' field.')
+            emit('event_result', {
+                'result': 'failed',
+                'message': 'HA event must specify \'event\' field.'
+            })
+            return False
+        
+        if not event_id:
+            log.error(f'Invalid HA event received: \'{data}\'. HA event must specify \'id\' field.')
+            emit('event_result', {
+                'result': 'failed',
+                'message': 'HA event must specify \'id\' field.'
+            })
+            return False
+        
         # Ignore when disarmed
         if not state.is_armed:
+            log.info(f'HA event \'{event_name}\' ignored. (reason: ICE is disarmed)')
+            emit('event_result', {
+                'result': 'success',
+                'message': 'HA event ignored. (reason: ICE is disarmed)'
+            })
             return True
         
-        # TODO
+        # Check if previous HA event is still valid
+        previus_event = state.ha_events_list.get(data.get('event'), None)
+        proceed = False
+
+        if not previus_event:
+            proceed = True
+        elif not previus_event.get('is_valid', False):
+            proceed = True
+        
+        if not proceed:
+            log.info(f'Previous HA event \'{event_name}\' is still valid. Ignoring this event...')
+            emit('event_result', {
+                'result': 'success',
+                'message': 'HA event ignored. (reason: previous event still valid)'
+            })
+            return True
+        
+        # Update state and broadcast event
+        log.info(f'HA event \'{event_name}\' accepted. Broadcasting event...')
+        state.ha_events_list[event_name] = {
+            'id': event_id,
+            'timestamp': datetime.datetime.now(),
+            'is_valid': True
+        }
+
+        emit('event_result', {
+            'result': 'success',
+            'message': 'HA event accepted and broadcasted.'
+        })
+
+        data['eventSource'] = 'ha'
+        sio_instance.emit('event', data)
+
+        return True
 
     @sio_instance.on('event_html')
     def handle_html_event(data):
+        # Check basic event message structure
+        event_name = data.get('event', None)
+        event_id = data.get('id', None)
+
+        if not event_name:
+            log.error(f'Invalid HTML event received: \'{data}\'. HTML event must specify \'event\' field.')
+            emit('event_result', {
+                'result': 'failed',
+                'message': 'HTML event must specify \'event\' field.'
+            })
+            return False
+        
+        if not event_id:
+            log.error(f'Invalid HTML event received: \'{data}\'. HTML event must specify \'id\' field.')
+            emit('event_result', {
+                'result': 'failed',
+                'message': 'HTML event must specify \'id\' field.'
+            })
+            return False
+        
         # Ignore when disarmed
         if not state.is_armed:
-            emit('event_failed', {
+            log.info(f'HTML event \'{event_name}\' ignored. (reason: ICE is disarmed)')
+            emit('event_result', {
                 'result': 'failed',
                 'message': 'ICE is disarmed.'
             })
             return False
         
-        log.debug(f"Received HTML event: {data}")
-        sio_instance.emit('event', {
-            'event': data['event'],
-            'eventSource': 'html'
+        # Broadcast event
+        log.info(f'HTML event \'{event_name}\' accepted. Broadcasting event...')
+
+        emit('event_result', {
+            'result': 'success',
+            'message': 'HTML event accepted and broadcasted.'
         })
+
+        data['eventSource'] = 'html'
+        sio_instance.emit('event', data)
+
+        return True
 
     @sio_instance.on('ping')
     def handle_ping():
