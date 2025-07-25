@@ -1,6 +1,4 @@
 Flask
 Flask-SocketIO
-opencv-python
-numpy
-python-socketio
+opencv-python-headless
 eventlet
