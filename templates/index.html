@@ -336,7 +336,8 @@
 
         // 비디오 프레임 수신
         socket.on('video_frame', function(data) {
-            if (isStreaming && data.frame) {
+            // if (isStreaming && data.frame) {
+            if (data.frame) {
                 try {
                     // 프레임 표시
                     videoFrame.src = 'data:image/jpeg;base64,' + data.frame;
@@ -388,7 +389,8 @@
                 updateStatus('테스트 중...', '');
 
                 socket.emit('event_html', {
-                    'event': 'test'
+                    'event': 'test',
+                    'id': 'test'
                 })
 
                 updateStatus('테스트 완료.', '');
@@ -469,10 +471,10 @@
             let action = '';
 
             if (arm) {
-                endpoint = '/arm';
+                endpoint = '/api/v1/arm/activate';
                 action = 'Arm';
             } else {
-                endpoint = '/disarm';
+                endpoint = '/api/v1/arm/deactivate';
                 action = 'Disarm';
             }
 
