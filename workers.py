@@ -81,11 +81,12 @@ def manage_ha_event_list_worker():
 def stream_rtsp(sio_instance: SocketIO, rtsp_instance: RTSP):
     """Fetch a frame from RTSP and streams via SocketIO"""
     if rtsp_instance.is_streaming() and rtsp_instance.is_open() and state.is_armed:
-        sio_instance.emit('video_frame', {
-            'frame': rtsp_instance.get_frame(),
-            'timestamp': datetime.datetime.now().isoformat()
-        },
-        room=state.ROOM_HTML)
+        eventlet.spawn(sio_instance.emit, 'video_frame', {
+                'frame': rtsp_instance.get_frame(),
+                'timestamp': datetime.datetime.now().isoformat()
+            },
+            room=state.ROOM_HTML
+        )
 
 def stream_rtsp_worker(sio_instance: SocketIO, rtsp_instance: RTSP):
     """Worker loop for streamding RTSP feed."""

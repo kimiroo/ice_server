@@ -1,4 +1,5 @@
 import logging
+import eventlet
 from flask import render_template, jsonify, request
 
 import state
@@ -31,7 +32,7 @@ def register_api_routes(app_instance, sio_instance, rtsp_instance: RTSP):
         })
 
         # Start RTSP stream
-        rtsp_instance.start_streaming()
+        eventlet.spawn(rtsp_instance.start_streaming)
 
         return jsonify({'isArmed': state.is_armed})
 
@@ -47,7 +48,7 @@ def register_api_routes(app_instance, sio_instance, rtsp_instance: RTSP):
         })
 
         # End RTSP stream
-        rtsp_instance.stop_streaming()
+        eventlet.spawn(rtsp_instance.stop_streaming)
 
         return jsonify({'isArmed': state.is_armed})
 
