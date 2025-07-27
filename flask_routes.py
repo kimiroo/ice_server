@@ -4,11 +4,10 @@ from flask import render_template, jsonify, request
 
 import state
 import utils
-from rtsp import RTSP
 
 log = logging.getLogger(__name__)
 
-def register_api_routes(app_instance, sio_instance, rtsp_instance: RTSP):
+def register_api_routes(app_instance, sio_instance):
     """Registers all HTTP API routes with the given Flask app and SocketIO instances."""
 
     @app_instance.before_request
@@ -31,9 +30,6 @@ def register_api_routes(app_instance, sio_instance, rtsp_instance: RTSP):
             'isArmed': state.is_armed
         })
 
-        # Start RTSP stream
-        eventlet.spawn(rtsp_instance.start_streaming)
-
         return jsonify({'isArmed': state.is_armed})
 
     @app_instance.route('/api/v1/arm/deactivate', methods=['POST'])
@@ -46,9 +42,6 @@ def register_api_routes(app_instance, sio_instance, rtsp_instance: RTSP):
         sio_instance.emit('ice_status', {
             'isArmed': state.is_armed
         })
-
-        # End RTSP stream
-        eventlet.spawn(rtsp_instance.stop_streaming)
 
         return jsonify({'isArmed': state.is_armed})
 

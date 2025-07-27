@@ -4,7 +4,6 @@ import eventlet
 from flask_socketio import SocketIO
 
 import state
-from rtsp import RTSP
 
 log = logging.getLogger(__name__)
 
@@ -77,25 +76,3 @@ def manage_ha_event_list_worker():
         eventlet.sleep(0.1)
 
     log.info("HA event manager worker stopped.")
-
-def stream_rtsp(sio_instance: SocketIO, rtsp_instance: RTSP):
-    """Fetch a frame from RTSP and streams via SocketIO"""
-    if rtsp_instance.is_streaming() and rtsp_instance.is_open() and state.is_armed:
-        eventlet.spawn(sio_instance.emit, 'video_frame', {
-                'frame': rtsp_instance.get_frame(),
-                'timestamp': datetime.datetime.now().isoformat()
-            },
-            room=state.ROOM_HTML
-        )
-
-def stream_rtsp_worker(sio_instance: SocketIO, rtsp_instance: RTSP):
-    """Worker loop for streamding RTSP feed."""
-    log.info("RTSP stream worker started.")
-    while state.is_server_up:
-        try:
-            stream_rtsp(sio_instance, rtsp_instance)
-        except Exception as e:
-            log.critical(f'Error while running RTSP stream worker: {e}')
-        eventlet.sleep(0.0333333333333333)
-
-    log.info("RTSP stream worker stopped.")

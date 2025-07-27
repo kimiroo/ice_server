@@ -5,7 +5,6 @@ from flask_socketio import SocketIO, emit, join_room, leave_room
 
 import state
 import utils
-from rtsp import RTSP
 
 log = logging.getLogger(__name__)
 
@@ -13,7 +12,7 @@ ROOM_HTML = state.ROOM_HTML
 ROOM_PC = state.ROOM_PC
 ROOM_HA = state.ROOM_HA
 
-def register_socket_events(sio_instance: SocketIO, rtsp_instance: RTSP):
+def register_socket_events(sio_instance: SocketIO):
     """Registers all Socket.IO event handlers with the given SocketIO instance."""
 
     @sio_instance.on('connect')

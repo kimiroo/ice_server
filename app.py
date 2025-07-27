@@ -12,8 +12,6 @@ import workers
 import socket_events
 import flask_routes
 
-from rtsp import RTSP
-
 HOST = '0.0.0.0'
 PORT = 8080
 RTSP_URL = 'rtsp://tapo_cam:zz%6k5CWYXc0tpTSqwS*qbgYD6!$axmK@10.5.21.10:554/stream1'
@@ -40,7 +38,7 @@ rtsp = RTSP(RTSP_URL)
 socket_events.register_socket_events(socketio, rtsp)
 
 # Register all HTTP API routes
-flask_routes.register_api_routes(app, socketio, rtsp)
+flask_routes.register_api_routes(app, socketio)
 
 if __name__ == '__main__':
     try:
@@ -49,7 +47,6 @@ if __name__ == '__main__':
         alive_checker_greenlet = worker_pool.spawn(workers.check_alive_status_worker)
         system_checker_greenlet = worker_pool.spawn(workers.check_ice_system_worker)
         ha_event_manager_greenlet = worker_pool.spawn(workers.manage_ha_event_list_worker)
-        rtsp_streaming_greenlet = worker_pool.spawn(workers.stream_rtsp_worker, socketio, rtsp)
 
         log.info("Starting Socket.IO server...")
         log.info(f"Listening on \'{HOST}:{PORT}\'...")
