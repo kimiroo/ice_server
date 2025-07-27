@@ -1,6 +1,8 @@
 import asyncio
 from aiohttp import web
 from aiortc import RTCPeerConnection, RTCSessionDescription
+
+from test_config import *
 from test_stream import GstVideoStreamTrack
 
 pcs = set()
@@ -19,11 +21,8 @@ async def offer(request):
             await pc.close()
             pcs.discard(pc)
 
-    rtsp_uri = 'rtsp://10.5.21.10:554/stream1'
-    username = 'tapo_cam'
-    password = 'zz%6k5CWYXc0tpTSqwS*qbgYD6!$axmK'
     pipeline_str = (
-        f'rtspsrc location={rtsp_uri} latency=0 user-id={username} user-pw={password} ! '
+        f'rtspsrc location={RTSP_URI} latency=0 user-id={USERNAME} user-pw={PASSWORD} ! '
         'rtph264depay ! h264parse ! avdec_h264 ! videoconvert ! '
         'video/x-raw, format=RGB ! appsink name=sink emit-signals=true max-buffers=1 drop=true sync=false'
     )

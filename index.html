@@ -7,6 +7,8 @@
   async function start() {
     const pc = new RTCPeerConnection();
 
+    pc.addTransceiver('video', { direction: 'recvonly' });
+
     pc.ontrack = (event) => {
       document.getElementById('video').srcObject = event.streams[0];
     };
