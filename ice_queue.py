@@ -1,7 +1,7 @@
 import logging
 import datetime
 import threading
-from typing import Any, List, Dict, Tuple, Optional
+from typing import List, Dict, Tuple, Union, Any, Optional
 
 import eventlet
 # WARNING: Add eventlet.monkey_patch() in main app
