@@ -7,6 +7,10 @@ eventlet.monkey_patch() # Patch standard library early
 from flask import Flask
 from flask_socketio import SocketIO
 
+import test_sio as socket_events
+from ice_queue import ICEEventQueue
+from sid_manager import SIDManager
+
 HOST = '0.0.0.0'
 PORT = 8080
 
@@ -26,6 +30,14 @@ sio = SocketIO(app,
                transports=['websocket', 'polling'],
                ping_timeout=2,
                ping_interval=.1)
+queue = ICEEventQueue(sio)
+sidm = SIDManager(sio)
+
+# Register all Socket.IO event handlers
+socket_events.register_socketio(sio, queue, sidm)
+
+# Register all HTTP API routes
+#flask_routes.register_api_routes(app, socketio)
 
 def main():
     try:

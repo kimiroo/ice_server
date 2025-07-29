@@ -12,8 +12,3 @@ ROOM_HA = 'room_ha'
 is_armed = False
 is_normal = True
 is_server_up = True
-connected_clients = {} # Stores client SID -> client_info_dict
-client_dict = {}
-
-# --- Event Variables ---
-ha_events_list = {}

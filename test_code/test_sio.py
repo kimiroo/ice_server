@@ -4,9 +4,10 @@ from flask import request
 from flask_socketio import SocketIO, emit, join_room, leave_room
 
 import test_state as state
-import ice_client
-import ice_queue
 import utils
+from ice_client import ICEClient
+from ice_queue import ICEEventQueue
+from sid_manager import SIDManager, SIDObject
 
 log = logging.getLogger(__name__)
 
@@ -14,12 +15,14 @@ ROOM_HTML = state.ROOM_HTML
 ROOM_PC = state.ROOM_PC
 ROOM_HA = state.ROOM_HA
 
-def register_socketio(sio: SocketIO):
+def register_socketio(socketio_instance: SocketIO,
+                      event_queue_instance: ICEEventQueue,
+                      sid_manager_instance: SIDManager):
     """
     Registers all Socket.IO event handlers with the given SocketIO instance.
     """
 
-    @sio.on('connect')
+    @socketio_instance.on('connect')
     def handle_connect():
         try:
             headers = dict(request.headers)
@@ -57,6 +60,9 @@ def register_socketio(sio: SocketIO):
                 log.warning(f'Unknown client type for SID: {request.sid}')
                 emit('error', {'message': 'Unknown client type'})
                 return False
+            
+            sid_manager_instance.add_sid(request.sid, client_name)
+            event_queue_instance.add_client(client_name, client_type)
 
             emit('connected', {
                 'status': 'success',
@@ -65,22 +71,16 @@ def register_socketio(sio: SocketIO):
                 'sid': request.sid
             })
 
-            # Update global connected_clients state
-            state.connected_clients[request.sid] = {
-                'name': client_name,
-                'type': client_type,
-                'connected_time': datetime.datetime.now(),
-                'last_seen': datetime.datetime.now(),
-                'alive': True
-            }
-
             if client_type in ['pc', 'ha']:
-                sio.emit(f'client_event', {
+                socketio_instance.emit(f'event', {
                     'event': 'connected',
-                    'client': {
-                        'clientName': client_name,
-                        'clientType': client_type,
-                        'sid': request.sid
+                    'eventType': 'client',
+                    'data': {
+                        'client': {
+                            'clientName': client_name,
+                            'clientType': client_type,
+                            'sid': request.sid
+                        }
                     }
                 })
 
@@ -89,17 +89,27 @@ def register_socketio(sio: SocketIO):
             emit('error', {'message': 'Connection failed'})
             return False
 
-    @sio.on('disconnect')
+    @socketio_instance.on('disconnect')
     def handle_disconnect():
         try:
-            # Remove from connected clients list
+            sid_obj: SIDObject = sid_manager_instance.get_sid_object(request.sid)
+            client_obj: ICEClient = None
+            client_name: str = None
+            client_type: str = None
+
+            if not sid_obj:
+                client_name = sid_obj.client_name
+                client_obj = event_queue_instance.get_client(request.sid)
+                client_type = client_obj.client_type
+                sid_manager_instance.remove_sid(request.sid)
+
             client = state.connected_clients.pop(request.sid, None)
             if client:
                 log.info(f'{client['type'].upper()} client \'{client['name']}\' (SID: {request.sid}) disconnected.')
 
                 if client['type'] in ['pc', 'ha']:
                     # Broadcast
-                    sio.emit('client_event', {
+                    socketio_instance.emit('client_event', {
                         'event': 'disconnected',
                         'client': {
                             'clientName': client['name'],
@@ -113,7 +123,7 @@ def register_socketio(sio: SocketIO):
         except Exception as e:
             log.error(f'Error in handle_disconnect: {e}')
 
-    @sio.on('event_ha')
+    @socketio_instance.on('event_ha')
     def handle_ha_event(data):
         # Check basic event message structure
         event_name = data.get('event', None)
@@ -180,11 +190,11 @@ def register_socketio(sio: SocketIO):
         })
 
         data['eventSource'] = 'ha'
-        sio.emit('event', data)
+        socketio_instance.emit('event', data)
 
         return True
 
-    @sio.on('event_html')
+    @socketio_instance.on('event_html')
     def handle_html_event(data):
         # Check basic event message structure
         event_name = data.get('event', None)
@@ -228,11 +238,11 @@ def register_socketio(sio: SocketIO):
         })
 
         data['eventSource'] = 'html'
-        sio.emit('event', data)
+        socketio_instance.emit('event', data)
 
         return True
 
-    @sio.on('ping')
+    @socketio_instance.on('ping')
     def handle_ping():
         # Update last_seen and alive
         if request.sid in state.connected_clients:

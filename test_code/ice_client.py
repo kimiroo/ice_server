@@ -1,12 +1,14 @@
 import datetime
-from typing import Dict, Any
+from typing import Dict, List, Any
+
+from ice_event import ICEEvent
 
 VALID_CLIENT_TYPE = [
     'html',
     'pc',
-    'ha',
-    'test'
+    'ha'
 ]
+
 
 class ICEClient:
     """
@@ -14,7 +16,8 @@ class ICEClient:
     """
     def __init__(self,
                  client_name: str,
-                 client_type: str):
+                 client_type: str,
+                 current_event_id: str):
         """
         Initializes an ICEClient object.
 
@@ -30,6 +33,9 @@ class ICEClient:
         self.registered: datetime.datetime = datetime.datetime.now()
         self.last_seen: datetime.datetime = datetime.datetime.now()
         self.alive: bool = True
+        self.last_fetched_event_id: str = current_event_id
+        self.events: List[ICEEvent] = []
+
 
     def to_dict(self) -> Dict[str, Any]:
         """
@@ -43,5 +49,7 @@ class ICEClient:
             'client_type': self.client_type,
             'registered': self.registered,
             'last_seen': self.last_seen,
-            'alive': self.alive
+            'alive': self.alive,
+            'last_fetched_event_id': self.last_fetched_event_id,
+            'events': self.events
         }
