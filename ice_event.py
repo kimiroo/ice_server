@@ -37,5 +37,5 @@ class ICEEvent:
             "event_id": self.event_id,
             "event_name": self.event_name,
             "event_data": self.event_data,
-            "timestamp": self.timestamp # datetime object will be included as is, serialization can happen later
+            "timestamp": self.timestamp
         }
