@@ -10,7 +10,8 @@ from flask_socketio import SocketIO
 
 import state
 
-SID_DELETE_THRESHOLD_SECONDS = 5 # 5 seconds
+SID_INVALID_THRESHOLD_SECONDS = 2 # 2 seconds
+SID_DELETE_THRESHOLD_SECONDS = 30 # 30 seconds
 
 log = logging.getLogger(__name__)
 
@@ -30,6 +31,7 @@ class SIDObject:
         self.sid: str = sid
         self.client_name: str = client_name
         self.last_seen: datetime.datetime = datetime.datetime.now()
+        self.is_alive: bool = True
     
     def to_dict(self) -> Dict[str, Any]:
         """
@@ -41,7 +43,8 @@ class SIDObject:
         return {
             'sid': self.sid,
             'client_name': self.client_name,
-            'last_seen': self.last_seen
+            'last_seen': self.last_seen,
+            'is_alive': self.is_alive
         }
         
 
@@ -96,12 +99,16 @@ class SIDManager:
         """
         return self.sid_dict.get(sid, None)
     
-    def get_sid_list(self, client_name: str) -> List[str]:
+    def get_sid_list(self, client_name: str, is_alive: bool) -> List[str]:
         sid_list = []
         with self.lock:
             for sid, sid_object in self.sid_dict.items():
-                if sid_object.client_name == client_name:
-                    sid_list.append(sid)
+                if is_alive:
+                    if sid_object.is_alive and sid_object.client_name == client_name:
+                        sid_list.append(sid)
+                else:
+                    if sid_object.client_name == client_name:
+                        sid_list.append(sid)
         return sid_list
 
     def update_sid_timestamp(self, sid: str) -> bool:
@@ -117,11 +124,12 @@ class SIDManager:
         with self.lock:
             if sid in self.sid_dict:
                 self.sid_dict[sid].last_seen = datetime.datetime.now()
+                self.sid_dict[sid].is_alive = True
                 return True
             log.debug(f'Attempted to update timestamp for non-existent client \'{sid}\' from the queue.')
             return False
 
-    def get_sids(self) -> dict:
+    def get_sids(self, is_alive: bool) -> dict:
         """
         Returns a copy of the current SID dictionary.
 
@@ -129,9 +137,16 @@ class SIDManager:
             dict: A copy of the sid_dict.
         """
         with self.lock:
-            return self.sid_dict.copy()
+            sid_list = []
+            for sid, sid_object in self.sid_dict.items():
+                if is_alive:
+                    if sid_object.is_alive:
+                        sid_list.append(sid_object.to_dict())
+                else:
+                    sid_list.append(sid_object.to_dict())
+            return sid_list
 
-    def _check_and_delete_old_sids(self):
+    def _check_old_sids(self):
         """
         Removes inactive SIDs from the dictionary.
         """
@@ -142,12 +157,16 @@ class SIDManager:
                 time_diff = current_time - timestamp
                 if time_diff.total_seconds() > SID_DELETE_THRESHOLD_SECONDS:
                     sids_to_delete.append(sid)
+                elif time_diff.total_seconds() > SID_INVALID_THRESHOLD_SECONDS:
+                    self.sid_dict[sid].is_alive = False
+                    ### TODO: Broadcast
             
             for sid in sids_to_delete:
+                ### TODO: Broadcast
                 del self.sid_dict[sid]
                 log.info(f"Removing SID '{sid}' due to inactivity.")
 
-    def check_and_delete_old_sids_worker(self):
+    def check_old_sids_worker(self):
         """
         Worker that periodically cleans up old SIDs.
         """

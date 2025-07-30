@@ -12,8 +12,8 @@ import state
 from ice_event import ICEEvent
 from ice_client import ICEClient
 
-CLIENT_INVALID_THRESHOLD_SECONDS = 1 # 1 seconds
-CLIENT_DELETE_THRESHOLD_SECONDS = 5 # 5 seconds
+CLIENT_INVALID_THRESHOLD_SECONDS = 2 # 2 seconds
+CLIENT_DELETE_THRESHOLD_SECONDS = 30 # 30 seconds
 
 log = logging.getLogger(__name__)
 
@@ -162,6 +162,7 @@ class ICEEventQueue:
                     clients_to_delete.append(client_name)
                 elif time_diff.total_seconds() > CLIENT_INVALID_THRESHOLD_SECONDS:
                     self.queue[client_name].alive = False
+                    ### TODO: Broadcast
             
             for client_name in clients_to_delete:
                 ### TODO: Broadcast

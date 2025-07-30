@@ -43,6 +43,8 @@ def main():
     try:
         # Start background worker greenlets
         worker_pool = eventlet.GreenPool()
+        check_old_clients_greenlet = worker_pool.spawn(queue.check_old_clients_worker)
+        check_old_sids_greenlet = worker_pool.spawn(sidm.check_old_sids_worker)
 
         log.info("Starting main server...")
         log.info(f"Listening on \'{HOST}:{PORT}\'...")

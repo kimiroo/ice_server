@@ -71,7 +71,7 @@ def register_socketio(socketio_instance: SocketIO,
                 'sid': request.sid
             })
 
-            if client_type in ['pc', 'ha']:
+            if client_type in ['pc', 'ha', 'html']:
                 socketio_instance.emit(f'event', {
                     'event': 'connected',
                     'eventType': 'client',
@@ -86,7 +86,10 @@ def register_socketio(socketio_instance: SocketIO,
 
         except Exception as e:
             log.error(f'Error in handle_connect: {e}')
-            emit('error', {'message': 'Connection failed'})
+            emit('error', {
+                'result': 'failed',
+                'message': f'Connection failed: {e}'
+            })
             return False
 
     @socketio_instance.on('disconnect')
@@ -102,12 +105,18 @@ def register_socketio(socketio_instance: SocketIO,
                 client_obj = event_queue_instance.get_client(request.sid)
                 client_type = client_obj.client_type
                 sid_manager_instance.remove_sid(request.sid)
+            
+            sid_list = sid_manager_instance.get_sid_list(client_name)
+            
+            if len(sid_list) == 0:
+                ### Broadcast
+                pass
 
             client = state.connected_clients.pop(request.sid, None)
             if client:
                 log.info(f'{client['type'].upper()} client \'{client['name']}\' (SID: {request.sid}) disconnected.')
 
-                if client['type'] in ['pc', 'ha']:
+                if client['type'] in ['pc', 'ha', 'html']:
                     # Broadcast
                     socketio_instance.emit('client_event', {
                         'event': 'disconnected',
