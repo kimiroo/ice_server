@@ -77,6 +77,35 @@ class ICEEventQueue:
         """
         return self.queue.get(client_name, None)
 
+    def get_client_list(self, client_type: str, is_alive: bool, json_friendly: bool) -> List[ICEClient]:
+        """
+        Gets the client.
+
+        Args:
+            client_type (str): Client Type
+            is_alive (bool): Whether to filter only alive clients
+
+        Returns:
+            List[ICEClient]: List of requested clients
+        """
+
+        client_list = []
+        with self.lock:
+            for client_name, client in self.queue.items():
+                if is_alive:
+                    if client.alive and client.client_type == client_type:
+                        if json_friendly:
+                            client_list.append(client.to_dict(json_friendly=True))
+                        else:
+                            client_list.append(client)
+                else:
+                    if client.client_type == client_type:
+                        if json_friendly:
+                            client_list.append(client.to_dict(json_friendly=True))
+                        else:
+                            client_list.append(client)
+        return client_list
+
     def add_event(self, event: ICEEvent) -> None:
         """
         Adds an event to all active clients' queues.

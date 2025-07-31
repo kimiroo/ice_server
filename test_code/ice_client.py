@@ -37,7 +37,7 @@ class ICEClient:
         self.events: List[ICEEvent] = []
 
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self, json_friendly: bool = False) -> Dict[str, Any]:
         """
         Converts the ICEClient object to a dictionary.
 
@@ -47,9 +47,9 @@ class ICEClient:
         return {
             'client_name': self.client_name,
             'client_type': self.client_type,
-            'registered': self.registered,
-            'last_seen': self.last_seen,
+            'registered': self.registered if not json_friendly else self.last_seen.isoformat(),
+            'last_seen': self.last_seen if not json_friendly else self.last_seen.isoformat(),
             'alive': self.alive,
             'last_fetched_event_id': self.last_fetched_event_id,
-            'events': self.events
+            'events': self.events if not json_friendly else [event.to_dict(json_friendly) for event in self.events]
         }

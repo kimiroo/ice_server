@@ -12,6 +12,7 @@ import state
 
 SID_INVALID_THRESHOLD_SECONDS = 2 # 2 seconds
 SID_DELETE_THRESHOLD_SECONDS = 30 # 30 seconds
+CLIENT_TYPES_TO_TRACK = ['pc', 'ha', 'html']
 
 log = logging.getLogger(__name__)
 
@@ -33,7 +34,7 @@ class SIDObject:
         self.last_seen: datetime.datetime = datetime.datetime.now()
         self.is_alive: bool = True
     
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self, json_friendly: bool = False) -> Dict[str, Any]:
         """
         Converts the SIDObject object to a dictionary.
 
@@ -43,7 +44,7 @@ class SIDObject:
         return {
             'sid': self.sid,
             'client_name': self.client_name,
-            'last_seen': self.last_seen,
+            'last_seen': self.last_seen if not json_friendly else self.last_seen.isoformat(),
             'is_alive': self.is_alive
         }
         
@@ -54,10 +55,11 @@ class SIDManager:
     """
     def __init__(self, socketio_instance: SocketIO):
         self.sid_dict: Dict[str, SIDObject] = {}
+        self.untracked_sid_dict: dict = {}
         self.sio: SocketIO = socketio_instance
         self.lock = threading.Lock()
 
-    def add_sid(self, sid: str, client_name: str) -> None:
+    def add_sid(self, sid: str, client_name: str, client_type: str) -> None:
         """
         Adds or updates a SID in the dictionary.
 
@@ -66,8 +68,11 @@ class SIDManager:
             client_name (str): The name of the client associated with the SID.
         """
         with self.lock:
-            sid_object = SIDObject(sid, client_name)
-            self.sid_dict[sid] = sid_object
+            if client_type in CLIENT_TYPES_TO_TRACK:
+                sid_object = SIDObject(sid, client_name)
+                self.sid_dict[sid] = sid_object
+            else:
+                self.untracked_sid_dict[sid] = {}
 
     def remove_sid(self, sid: str) -> bool:
         """
@@ -80,7 +85,9 @@ class SIDManager:
             bool: True if the SID was found and removed, False otherwise.
         """
         with self.lock:
-            if sid in self.sid_dict:
+            if sid in self.untracked_sid_dict:
+                del self.untracked_sid_dict[sid]
+            elif sid in self.sid_dict:
                 del self.sid_dict[sid]
                 log.debug(f'Client \'{sid}\' removed from the queue.')
                 return True
@@ -111,7 +118,7 @@ class SIDManager:
                         sid_list.append(sid)
         return sid_list
 
-    def update_sid_timestamp(self, sid: str) -> bool:
+    def update_last_seen(self, sid: str) -> bool:
         """
         Updates the timestamp for a given SID.
 
@@ -129,7 +136,7 @@ class SIDManager:
             log.debug(f'Attempted to update timestamp for non-existent client \'{sid}\' from the queue.')
             return False
 
-    def get_sids(self, is_alive: bool) -> dict:
+    def get_sids(self, is_alive: bool, json_friendly: bool) -> dict:
         """
         Returns a copy of the current SID dictionary.
 
@@ -141,10 +148,16 @@ class SIDManager:
             for sid, sid_object in self.sid_dict.items():
                 if is_alive:
                     if sid_object.is_alive:
-                        sid_list.append(sid_object.to_dict())
+                        sid_list.append(sid_object.to_dict(json_friendly))
                 else:
-                    sid_list.append(sid_object.to_dict())
+                    sid_list.append(sid_object.to_dict(json_friendly))
             return sid_list
+        
+    def is_test_client(self, sid: str) -> bool:
+        """
+        Checks if a SID is a test client.
+        """
+        return sid in self.untracked_sid_dict
 
     def _check_old_sids(self):
         """

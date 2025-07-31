@@ -26,7 +26,7 @@ class ICEEvent:
         # Assign current time if timestamp is not provided
         self.timestamp: datetime.datetime = event_timestamp if event_timestamp is not None else datetime.datetime.now()
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self, json_friendly: bool = False) -> Dict[str, Any]:
         """
         Converts the ICEEvent object to a dictionary.
 
@@ -37,5 +37,5 @@ class ICEEvent:
             "event_id": self.event_id,
             "event_name": self.event_name,
             "event_data": self.event_data,
-            "timestamp": self.timestamp
+            "timestamp": self.timestamp if not json_friendly else self.timestamp.isoformat()
         }

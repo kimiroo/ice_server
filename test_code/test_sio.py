@@ -15,6 +15,8 @@ ROOM_HTML = state.ROOM_HTML
 ROOM_PC = state.ROOM_PC
 ROOM_HA = state.ROOM_HA
 
+CLIENT_TYPES_TO_TRACK = ['pc', 'ha', 'html']
+
 def register_socketio(socketio_instance: SocketIO,
                       event_queue_instance: ICEEventQueue,
                       sid_manager_instance: SIDManager):
@@ -61,8 +63,9 @@ def register_socketio(socketio_instance: SocketIO,
                 emit('error', {'message': 'Unknown client type'})
                 return False
             
-            sid_manager_instance.add_sid(request.sid, client_name)
-            event_queue_instance.add_client(client_name, client_type)
+            sid_manager_instance.add_sid(request.sid, client_name, client_type)
+            if client_type in CLIENT_TYPES_TO_TRACK:
+                event_queue_instance.add_client(client_name, client_type)
 
             emit('connected', {
                 'status': 'success',
@@ -71,7 +74,7 @@ def register_socketio(socketio_instance: SocketIO,
                 'sid': request.sid
             })
 
-            if client_type in ['pc', 'ha', 'html']:
+            if client_type in CLIENT_TYPES_TO_TRACK:
                 socketio_instance.emit(f'event', {
                     'event': 'connected',
                     'eventType': 'client',
@@ -95,6 +98,10 @@ def register_socketio(socketio_instance: SocketIO,
     @socketio_instance.on('disconnect')
     def handle_disconnect():
         try:
+            if sid_manager_instance.is_test_client(request.sid):
+                sid_manager_instance.remove_sid(request.sid)
+                return
+            
             sid_obj: SIDObject = sid_manager_instance.get_sid_object(request.sid)
             client_obj: ICEClient = None
             client_name: str = None
@@ -110,29 +117,25 @@ def register_socketio(socketio_instance: SocketIO,
             
             if len(sid_list) == 0:
                 ### Broadcast
-                pass
-
-            client = state.connected_clients.pop(request.sid, None)
-            if client:
-                log.info(f'{client['type'].upper()} client \'{client['name']}\' (SID: {request.sid}) disconnected.')
-
-                if client['type'] in ['pc', 'ha', 'html']:
-                    # Broadcast
-                    socketio_instance.emit('client_event', {
-                        'event': 'disconnected',
+                socketio_instance.emit('event', {
+                    'event': 'disconnected',
+                    'eventType': 'client',
+                    'data': {
                         'client': {
-                            'clientName': client['name'],
-                            'clientType': client['type'],
+                            'clientName': client_name,
+                            'clientType': client_type,
                             'sid': request.sid
                         }
-                    })
+                    }
+                })
+                pass
 
             else:
                 log.warning(f"Disconnected client SID {request.sid} not found in connected_clients.")
         except Exception as e:
             log.error(f'Error in handle_disconnect: {e}')
 
-    @socketio_instance.on('event_ha')
+    @socketio_instance.on('event_ha') # TODO
     def handle_ha_event(data):
         # Check basic event message structure
         event_name = data.get('event', None)
@@ -203,7 +206,7 @@ def register_socketio(socketio_instance: SocketIO,
 
         return True
 
-    @socketio_instance.on('event_html')
+    @socketio_instance.on('event_html') # TODO
     def handle_html_event(data):
         # Check basic event message structure
         event_name = data.get('event', None)
@@ -250,35 +253,116 @@ def register_socketio(socketio_instance: SocketIO,
         socketio_instance.emit('event', data)
 
         return True
+    
+    @socketio_instance.on('event')
+    def handle_event(data):
+        try:
+            # armed check
+
+            # add to event queue
+
+            # emit to all connected clients
+
+            # emit to client
+
+            pass
+        
+        except Exception as e:
+            pass
 
     @socketio_instance.on('ping')
     def handle_ping():
-        # Update last_seen and alive
-        if request.sid in state.connected_clients:
-            state.connected_clients[request.sid]['last_seen'] = datetime.datetime.now()
-            state.connected_clients[request.sid]['alive'] = True # Mark as alive on ping
+        try:
+            # Update last_seen and alive
+            sid_obj = sid_manager_instance.get_sid_object(request.sid)
+            client_name = sid_obj.client_name
+            sid_manager_instance.update_last_seen(request.sid)
+            event_queue_instance.update_last_seen(client_name)
 
-        # Build response body using utils functions
-        all_client_list_pc = utils.get_connected_client_list('pc', False)
-        all_client_list_ha = utils.get_connected_client_list('ha', False)
-        all_client_list_html = utils.get_connected_client_list('html', False)
+            lookup_result, event_queue = event_queue_instance.get_events(client_name)
 
-        alive_client_list_pc = utils.get_connected_client_list('pc', True)
-        alive_client_list_ha = utils.get_connected_client_list('ha', True)
-        alive_client_list_html = utils.get_connected_client_list('html', True)
+            event_queue_list = []
+            for event in event_queue:
+                event_queue_list.append(event.to_dict())
+            
+            result = 'success' if lookup_result else 'failed'
 
-        emit('pong', {
-            'timestamp': datetime.datetime.now().isoformat(),
-            'isArmed': state.is_armed,
-            'isNormal': state.is_normal,
-            'clientList': {
-                'pc': all_client_list_pc,
-                'ha': all_client_list_ha,
-                'html': all_client_list_html
-            },
-            'aliveClientCount': {
-                'pc': len(alive_client_list_pc),
-                'ha': len(alive_client_list_ha),
-                'html': len(alive_client_list_html)
-            }
-        })
+            emit('pong', {
+                'result': result,
+                'events': event_queue_list
+            })
+        
+        except Exception as e:
+            emit('pong', {
+                'result': 'failed',
+                'events': []
+            })
+
+    @socketio_instance.on('ack')
+    def handle_ack(data):
+        try:
+            event_id_list = data.get('ackList', [])
+
+            # Update last_seen and alive
+            sid_obj = sid_manager_instance.get_sid_object(request.sid)
+            client_name = sid_obj.client_name
+            sid_manager_instance.update_last_seen(request.sid)
+            event_queue_instance.update_last_seen(client_name)
+
+            # ACK events
+            ack_result = event_queue_instance.ack_events(client_name, event_id_list)
+
+            result = 'success' if ack_result else 'failed'
+
+            emit('ack_result', {
+                'result': result
+            })
+
+        except Exception as e:
+            emit('ack_result', {
+                'result': 'failed',
+                'message': f'Error while handling \'ack\': {e}'
+            })
+
+    @socketio_instance.on('get')
+    def handle_get(data):
+        try:
+            resource_name = data.get('resource', None)
+
+            if resource_name == 'clients':
+                client_list_pc = event_queue_instance.get_client_list('pc', is_alive=False, json_friendly=True)
+                client_list_ha = event_queue_instance.get_client_list('ha', is_alive=False, json_friendly=True)
+                client_list_html = event_queue_instance.get_client_list('html', is_alive=False, json_friendly=True)
+
+                alive_client_list_pc = event_queue_instance.get_client_list('pc', is_alive=True, json_friendly=True)
+                alive_client_list_ha = event_queue_instance.get_client_list('ha', is_alive=True, json_friendly=True)
+                alive_client_list_html = event_queue_instance.get_client_list('html', is_alive=True, json_friendly=True)
+                
+                emit('get_result', {
+                    'result': 'success',
+                    'resource': 'clients',
+                    'data': {
+                        'clientList': {
+                            'pc': client_list_pc,
+                            'ha': client_list_ha,
+                            'html': client_list_html
+                        },
+                        'aliveClientList': {
+                            'pc': alive_client_list_pc,
+                            'ha': alive_client_list_ha,
+                            'html': alive_client_list_html
+                        }
+                    }
+                })
+            
+            else:
+                emit('get_result', {
+                    'result': 'failed',
+                    'message': f'Unknown resource \'{resource_name}\''
+                })
+
+        except Exception as e:
+            emit('get_result', {
+                'result': 'failed',
+                'message': f'Error while handling \'get\': {e}'
+            })
