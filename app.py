@@ -2,9 +2,26 @@ import os
 import logging
 import traceback
 
-import eventlet # Must be imported before Flask/SocketIO if async_mode='eventlet'
+# Load log level config
+LOG_LEVEL_ENV = os.getenv('LOG_LEVEL', 'INFO').upper()
+VALID_LOG_LEVELS = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']
 
-eventlet.hubs.use_hub("eventlet.hubs.asyncio") # Use asyncio hub before monkey patching
+
+
+if LOG_LEVEL_ENV in VALID_LOG_LEVELS:
+    logging_level = getattr(logging, LOG_LEVEL_ENV)
+else:
+    logging_level = logging.INFO # Default to INFO if environment variable is invalid
+    print(f"[CRITICAL] main - Invalid LOG_LEVEL '{LOG_LEVEL_ENV}' provided. Defaulting to INFO.")
+
+logging.basicConfig(
+    format='%(asctime)s [%(levelname)s] %(name)s - %(message)s',
+    level=logging_level,
+    datefmt='%m/%d/%Y %I:%M:%S %p',
+)
+log = logging.getLogger('main')
+
+import eventlet # Must be imported before Flask/SocketIO if async_mode='eventlet'
 eventlet.monkey_patch() # Patch standard library early
 
 from flask import Flask
@@ -19,25 +36,6 @@ from utils.async_helper import run_async_in_eventlet
 from objects.ice_queue import ICEEventQueue
 from objects.sid_manager import SIDManager
 from onvif_.monitor_events import ONVIFMonitor
-
-
-# Load log level config
-LOG_LEVEL_ENV = os.getenv('LOG_LEVEL', 'INFO').upper()
-VALID_LOG_LEVELS = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']
-
-log = logging.getLogger('main')
-
-if LOG_LEVEL_ENV in VALID_LOG_LEVELS:
-    logging_level = getattr(logging, LOG_LEVEL_ENV)
-else:
-    logging_level = logging.INFO # Default to INFO if environment variable is invalid
-    log.warning(f"Invalid LOG_LEVEL '{LOG_LEVEL_ENV}' provided. Defaulting to INFO.")
-
-logging.basicConfig(
-    format='%(asctime)s [%(levelname)s] %(name)s - %(message)s',
-    level=logging_level,
-    datefmt='%m/%d/%Y %I:%M:%S %p',
-)
 
 # Load app
 app = Flask(__name__)
@@ -67,7 +65,6 @@ def main():
         check_old_clients_and_events_greenlet = worker_pool.spawn(event_queue.check_old_clients_and_events_worker)
         check_old_sids_greenlet = worker_pool.spawn(sid_manager.check_old_sids_worker)
         onvif_event_monitoring_greenlet = worker_pool.spawn(
-            run_async_in_eventlet,
             onvif_monitor.onvif_event_monitoring_worker(
                 socketio_instance=sio,
                 event_queue_instance=event_queue
