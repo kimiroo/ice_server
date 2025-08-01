@@ -1,7 +1,7 @@
 import datetime
 from typing import Dict, List, Any
 
-from ice_event import ICEEvent
+from objects.ice_event import ICEEvent
 
 VALID_CLIENT_TYPE = [
     'html',

@@ -8,9 +8,9 @@ import eventlet
 
 from flask_socketio import SocketIO
 
-import test_state as state
-from ice_event import ICEEvent
-from ice_client import ICEClient
+import utils.state as state
+from objects.ice_event import ICEEvent
+from objects.ice_client import ICEClient
 
 CLIENT_INVALID_THRESHOLD_SECONDS = 2 # 2 seconds
 CLIENT_DELETE_THRESHOLD_SECONDS = 30 # 30 seconds
@@ -175,6 +175,25 @@ class ICEEventQueue:
             log.error(f'Attempted to ACK events for non-existent client \'{client_name}\'.')
             return False
 
+    def restore_queue(self, client_name: str, event_id: str) -> bool:
+        try:
+            with self.lock:
+                new_event_queue = []
+                for event in reversed(self.event_list):
+                    if event.id != event_id:
+                        new_event_queue.append(event)
+                    else:
+                        break
+                new_event_queue = reversed(new_event_queue)
+
+                self.queue[client_name].events = new_event_queue
+
+                return True
+
+        except:
+            log.error(f'Error while restoring event queue for client \'{client_name}\' with event id \'{event_id}\'')
+            return False
+
     def update_last_seen(self, client_name: str) -> bool:
         """
         Updates the last seen timestamp for a client.
@@ -205,7 +224,7 @@ class ICEEventQueue:
             new_event_list = []
             for event in self.event_list:
                 time_diff = current_time - event.timestamp
-                if time_diff <= EVENT_INVALID_THRESHOLD_SECONDS:
+                if time_diff.total_seconds() <= EVENT_INVALID_THRESHOLD_SECONDS:
                     new_event_list.append(event)
             self.event_list = new_event_list
 
@@ -232,6 +251,6 @@ class ICEEventQueue:
             try:
                 self._check_old_clients_and_events()
             except Exception as e:
-                log.warning(f'Unexpected error occured while checking and deleting old clients: {e}')
+                log.warning(f'Unexpected error occured while checking old clients and events: {e}')
             eventlet.sleep(0.1)
         log.info("Client cleanup worker stopped.")

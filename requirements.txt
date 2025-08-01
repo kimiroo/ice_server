@@ -1,3 +1,5 @@
+requests
 eventlet
 flask
 flask-socketio
+onvif-zeep-async

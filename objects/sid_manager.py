@@ -1,52 +1,21 @@
 import logging
 import datetime
 import threading
-from typing import Dict, List, Any
+from typing import Dict, List
 
 import eventlet
 # WARNING: Add eventlet.monkey_patch() in main app
 
 from flask_socketio import SocketIO
 
-import test_state as state
+import utils.state as state
+from objects.sid_object import SIDObject
 
 SID_INVALID_THRESHOLD_SECONDS = 2 # 2 seconds
 SID_DELETE_THRESHOLD_SECONDS = 30 # 30 seconds
 CLIENT_TYPES_TO_TRACK = ['pc', 'ha', 'html']
 
 log = logging.getLogger(__name__)
-
-
-class SIDObject:
-    """
-    Represents a SID object with its last seen timestamp.
-    """
-    def __init__(self, sid: str, client_name: str):
-        """
-        Initializes a SIDObject object.
-
-        Args:
-            sid (str): The SID of the client.
-            client_name (str): The name of the client.
-        """
-        self.sid: str = sid
-        self.client_name: str = client_name
-        self.last_seen: datetime.datetime = datetime.datetime.now()
-        self.is_alive: bool = True
-
-    def to_dict(self, json_friendly: bool = False) -> Dict[str, Any]:
-        """
-        Converts the SIDObject object to a dictionary.
-
-        Returns:
-            Dict[str, Any]: A dictionary representation of the SIDObject.
-        """
-        return {
-            'sid': self.sid,
-            'client_name': self.client_name,
-            'last_seen': self.last_seen if not json_friendly else self.last_seen.isoformat(),
-            'is_alive': self.is_alive
-        }
 
 
 class SIDManager:
@@ -165,9 +134,9 @@ class SIDManager:
         """
         sids_to_delete = []
         with self.lock:
-            current_time = datetime.datetime.now()
-            for sid, timestamp in self.sid_dict.items():
-                time_diff = current_time - timestamp
+            time_now = datetime.datetime.now()
+            for sid, sid_object in self.sid_dict.items():
+                time_diff = time_now - sid_object.last_seen
                 if time_diff.total_seconds() > SID_DELETE_THRESHOLD_SECONDS:
                     sids_to_delete.append(sid)
                 elif time_diff.total_seconds() > SID_INVALID_THRESHOLD_SECONDS:

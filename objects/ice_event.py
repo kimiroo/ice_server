@@ -36,9 +36,9 @@ class ICEEvent:
             Dict[str, Any]: A dictionary representation of the event.
         """
         return {
-            'id': self.event_id,
-            'name': self.event_name,
+            'id': self.id,
+            'name': self.name,
             'source': self.source,
-            'data': self.event_data,
+            'data': self.data,
             'timestamp': self.timestamp if not json_friendly else self.timestamp.isoformat()
         }

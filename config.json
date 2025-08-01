@@ -1,0 +1,19 @@
+{
+    "host": "0.0.0.0",
+    "port": "8080",
+    "logLevel": "INFO",
+    "onvif": {
+        "host": "",
+        "port": "",
+        "username": "",
+        "password": ""
+    },
+    "webhook": {
+        "url": "",
+        "method": "POST",
+        "data": "",
+        "headers": {
+            "Priority": 5
+        }
+    }
+}

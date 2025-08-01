@@ -287,6 +287,7 @@
         let lastFrameTime = Date.now();
         let isStreaming = false;
         let connectionRetries = 0;
+        let lastEventId = '';
         const maxRetries = 3;
 
         // DOM 요소들
@@ -307,6 +308,12 @@
         socket.on('connect', function() {
             console.log('Socket.IO 연결 성공!');
             updateStatus('서버에 연결되었습니다', 'connected');
+
+            if (lastEventId != '') {
+                socket.emit('restore_queue', {
+                    'event_id': lastEventId
+                })
+            }
             connectionStatus.textContent = '연결됨';
             connectionRetries = 0;
         });
@@ -334,53 +341,17 @@
             isStreaming = false;
         });
 
-        // 비디오 프레임 수신
-        socket.on('video_frame', function(data) {
-            // if (isStreaming && data.frame) {
-            if (data.frame) {
-                try {
-                    // 프레임 표시
-                    videoFrame.src = 'data:image/jpeg;base64,' + data.frame;
-                    videoFrame.style.display = 'block';
-                    noVideo.style.display = 'none';
-
-                    // 통계 업데이트
-                    frameCount++;
-                    frameCountElement.textContent = frameCount;
-
-                    // FPS 계산
-                    const now = Date.now();
-                    const elapsed = (now - startTime) / 1000;
-                    const fps = Math.round(frameCount / elapsed);
-                    fpsElement.textContent = fps;
-
-                    // 지연 시간 계산
-                    if (data.timestamp) {
-                        const frameTime = new Date(data.timestamp).getTime();
-                        const latency = now - frameTime;
-                        latencyElement.textContent = latency + 'ms';
-                    }
-
-                    lastFrameTime = now;
-
-                    // 첫 프레임 수신 시 상태 업데이트
-                    if (frameCount === 1) {
-                        updateStatus('비디오 스트림 수신 중...', 'connected');
-                    }
-
-                } catch (error) {
-                    console.error('프레임 처리 오류:', error);
-                }
-            }
-        });
-
-        socket.on('status', function(data) {
+        socket.on('status', data => {
             console.log('서버 상태:', data.message);
         });
 
-        socket.on('pong', function(data) {
+        socket.on('pong', data => {
             console.log('pong');
             //console.log(data);
+        });
+
+        socket.on('event', data => {
+            console.log(data)
         });
 
         // 연결 테스트 함수
@@ -388,81 +359,15 @@
             try {
                 updateStatus('테스트 중...', '');
 
-                socket.emit('event_html', {
+                socket.emit('event', {
+                    'id': 'test_id',
                     'event': 'test',
-                    'id': 'test'
+                    'source': 'html'
                 })
 
                 updateStatus('테스트 완료.', '');
             } catch (error) {
                 updateStatus('테스트 오류: ' + error.message, 'error');
-            }
-        }
-
-        // 스트리밍 시작
-        async function startStream() {
-            try {
-                loading.style.display = 'block';
-                startBtn.disabled = true;
-
-                const response = await fetch('/start_stream', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    }
-                });
-
-                const result = await response.json();
-
-                if (result.success) {
-                    isStreaming = true;
-                    startTime = Date.now();
-                    frameCount = 0;
-
-                    updateStatus('스트리밍이 시작되었습니다', 'connected');
-                    startBtn.disabled = true;
-                    stopBtn.disabled = false;
-                    connectionStatus.textContent = '스트리밍 중';
-                } else {
-                    updateStatus('스트리밍 시작 실패: ' + result.message, 'error');
-                    startBtn.disabled = false;
-                }
-            } catch (error) {
-                updateStatus('네트워크 오류: ' + error.message, 'error');
-                startBtn.disabled = false;
-            } finally {
-                loading.style.display = 'none';
-            }
-        }
-
-        // 스트리밍 중지
-        async function stopStream() {
-            try {
-                stopBtn.disabled = true;
-
-                const response = await fetch('/stop_stream', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    }
-                });
-
-                const result = await response.json();
-
-                if (result.success) {
-                    isStreaming = false;
-                    updateStatus('스트리밍이 중지되었습니다', '');
-                    startBtn.disabled = false;
-                    stopBtn.disabled = true;
-                    connectionStatus.textContent = '중지됨';
-                    showNoVideo();
-                } else {
-                    updateStatus('스트리밍 중지 실패: ' + result.message, 'error');
-                }
-            } catch (error) {
-                updateStatus('네트워크 오류: ' + error.message, 'error');
-            } finally {
-                stopBtn.disabled = false;
             }
         }
 

@@ -2,6 +2,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from objects.onvif_event import ONVIFEvent
+
 # Ensure basic logging is configured if this snippet is run standalone for testing
 # In the full script, this would be set up globally.
 LOGGER = logging.getLogger(__name__)
@@ -20,28 +22,8 @@ EVENT_DICT = {
     }
 }
 
-# --- Simplified Event Model for output ---
-class Event:
-    """Simplified Event class to hold parsed event data."""
-    def __init__(self, topic: str, value: Any | None = None, event_name: str | None = None, raw_message: Any | None = None):
-        self.topic = topic
-        self.value = value
-        self.event_name = event_name # Custom event name from EVENT_DICT (e.g., 'motion', 'person')
-        self.raw_message = raw_message # The original full message object
-
-    def __repr__(self):
-        return (
-            f"Event(topic='{self.topic}', event_name='{self.event_name}', value='{self.value}', "
-            f"source_data={self.source_data}, raw_message_type={type(self.raw_message)})"
-        )
-    def __str__(self):
-        # Prefer custom event name if available, otherwise use topic
-        display_name = self.event_name if self.event_name else self.topic
-        return f"Event: \'{display_name}\', Value: \'{self.value}\', Topic: \'{self.topic}\'"
-
-
 # --- Unified Event Parser Function ---
-async def parse_event_message(msg: Any) -> Event | None:
+async def parse_event_message(msg: Any) -> ONVIFEvent | None:
     """
     Parses a generic ONVIF event message using custom definitions or
     falls back to extracting all SimpleItem data.
@@ -147,7 +129,7 @@ async def parse_event_message(msg: Any) -> Event | None:
             parsed_value = "No specific data found"
 
     # Return the Event object with all collected information
-    return Event(
+    return ONVIFEvent(
         topic=topic,
         value=parsed_value,
         event_name=parsed_event_name,
