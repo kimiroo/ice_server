@@ -1,5 +1,4 @@
 import datetime
-import uuid
 from typing import Dict, Any
 
 class ICEEvent:
@@ -7,7 +6,9 @@ class ICEEvent:
     Represents an ICE (Information, Communication, Event) event with a name, data, and timestamp.
     """
     def __init__(self,
+                 event_id: str,
                  event_name: str,
+                 event_source: str,
                  event_data: Dict[str, Any], # event_data can be a dictionary with various types
                  event_timestamp: datetime.datetime = None # Default to None and set inside for current time
                  ):
@@ -20,9 +21,10 @@ class ICEEvent:
             event_timestamp (datetime.datetime, optional): The timestamp of the event.
                                                              Defaults to the current time if not provided.
         """
-        self.event_id: str = uuid.uuid4()
-        self.event_name: str = event_name
-        self.event_data: Dict[str, Any] = event_data
+        self.id: str = event_id
+        self.name: str = event_name
+        self.source: str = event_source
+        self.data: Dict[str, Any] = event_data
         # Assign current time if timestamp is not provided
         self.timestamp: datetime.datetime = event_timestamp if event_timestamp is not None else datetime.datetime.now()
 
@@ -34,8 +36,9 @@ class ICEEvent:
             Dict[str, Any]: A dictionary representation of the event.
         """
         return {
-            "event_id": self.event_id,
-            "event_name": self.event_name,
-            "event_data": self.event_data,
-            "timestamp": self.timestamp if not json_friendly else self.timestamp.isoformat()
+            'id': self.event_id,
+            'name': self.event_name,
+            'source': self.source,
+            'data': self.event_data,
+            'timestamp': self.timestamp if not json_friendly else self.timestamp.isoformat()
         }

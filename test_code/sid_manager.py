@@ -8,7 +8,7 @@ import eventlet
 
 from flask_socketio import SocketIO
 
-import state
+import test_state as state
 
 SID_INVALID_THRESHOLD_SECONDS = 2 # 2 seconds
 SID_DELETE_THRESHOLD_SECONDS = 30 # 30 seconds
@@ -33,7 +33,7 @@ class SIDObject:
         self.client_name: str = client_name
         self.last_seen: datetime.datetime = datetime.datetime.now()
         self.is_alive: bool = True
-    
+
     def to_dict(self, json_friendly: bool = False) -> Dict[str, Any]:
         """
         Converts the SIDObject object to a dictionary.
@@ -47,7 +47,7 @@ class SIDObject:
             'last_seen': self.last_seen if not json_friendly else self.last_seen.isoformat(),
             'is_alive': self.is_alive
         }
-        
+
 
 class SIDManager:
     """
@@ -105,7 +105,7 @@ class SIDManager:
             SIDObject: The SIDObject if found, None otherwise.
         """
         return self.sid_dict.get(sid, None)
-    
+
     def get_sid_list(self, client_name: str, is_alive: bool) -> List[str]:
         sid_list = []
         with self.lock:
@@ -152,7 +152,7 @@ class SIDManager:
                 else:
                     sid_list.append(sid_object.to_dict(json_friendly))
             return sid_list
-        
+
     def is_test_client(self, sid: str) -> bool:
         """
         Checks if a SID is a test client.
@@ -173,7 +173,7 @@ class SIDManager:
                 elif time_diff.total_seconds() > SID_INVALID_THRESHOLD_SECONDS:
                     self.sid_dict[sid].is_alive = False
                     ### TODO: Broadcast
-            
+
             for sid in sids_to_delete:
                 ### TODO: Broadcast
                 del self.sid_dict[sid]
@@ -186,7 +186,7 @@ class SIDManager:
         log.info("SID cleanup worker started.")
         while state.is_server_up:
             try:
-                self._check_and_delete_old_sids()
+                self._check_old_sids()
             except Exception as e:
                 log.warning(f'Unexpected error occured while checking and deleting old SIDs: {e}')
             eventlet.sleep(0.1)

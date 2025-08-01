@@ -8,12 +8,13 @@ import eventlet
 
 from flask_socketio import SocketIO
 
-import state
+import test_state as state
 from ice_event import ICEEvent
 from ice_client import ICEClient
 
 CLIENT_INVALID_THRESHOLD_SECONDS = 2 # 2 seconds
 CLIENT_DELETE_THRESHOLD_SECONDS = 30 # 30 seconds
+EVENT_INVALID_THRESHOLD_SECONDS = 15 # 15 seconds
 
 log = logging.getLogger(__name__)
 
@@ -26,6 +27,7 @@ class ICEEventQueue:
         self.last_event_id: str = None
         self.sio: SocketIO = socketio_instance
         self.queue: Dict[str, ICEClient] = {}
+        self.event_list: List[ICEEvent] = []
         self.lock = threading.Lock()
 
     def add_client(self, client_name: str, client_type: str) -> None:
@@ -42,7 +44,7 @@ class ICEEventQueue:
         with self.lock:
             if client_name not in self.queue:
                 self.queue[client_name] = client
-                log.info(f'Client \'{client.client_name}\' added to the queue.')
+                log.info(f'Client \'{client.name}\' added to the queue.')
             else:
                 log.debug(f'Client \'{client_name}\' already exists in the queue. Updating timestamp.')
                 self.queue[client_name].last_seen = datetime.datetime.now()
@@ -93,13 +95,13 @@ class ICEEventQueue:
         with self.lock:
             for client_name, client in self.queue.items():
                 if is_alive:
-                    if client.alive and client.client_type == client_type:
+                    if client.alive and client.type == client_type:
                         if json_friendly:
                             client_list.append(client.to_dict(json_friendly=True))
                         else:
                             client_list.append(client)
                 else:
-                    if client.client_type == client_type:
+                    if client.type == client_type:
                         if json_friendly:
                             client_list.append(client.to_dict(json_friendly=True))
                         else:
@@ -114,11 +116,13 @@ class ICEEventQueue:
             event (ICEEvent): The event object to add.
         """
         with self.lock:
+            self.event_list.append(event)
+
             for client_name, client in self.queue.items():
                 self.queue[client_name].events.append(event)
-                log.debug(f'Event \'{event.event_name}\' added to client \'{client_name}\'.')
-            self.last_event_id = event.event_id
-    
+                log.debug(f'Event \'{event.name}\' added to client \'{client_name}\'.')
+            self.last_event_id = event.id
+
     def get_events(self, client_name: str) -> Tuple[bool, List[ICEEvent]]:
         """
         Retrieves all events for a specific client.
@@ -134,7 +138,18 @@ class ICEEventQueue:
                 return True, self.queue[client_name].events
             log.error(f'Attempted to get events for non-existent client \'{client_name}\'.')
             return False, []
-    
+
+    def is_previous_event_valid(self, event_name: str) -> bool:
+        with self.lock:
+            for event in reversed(self.event_list):
+                if event.name == event_name:
+                    time_now = datetime.datetime.now()
+                    time_diff = time_now - event.timestamp
+
+                    if time_diff <= EVENT_INVALID_THRESHOLD_SECONDS:
+                        return True
+            return False
+
     def ack_events(self, client_name: str, event_id_list: List[str]) -> bool:
         """
         ACK event_ids for a client and updates last seen timestamp.
@@ -150,16 +165,16 @@ class ICEEventQueue:
         with self.lock:
             if client_name in self.queue:
                 for event in self.queue[client_name].events:
-                    if event.event_id not in event_id_list:
+                    if event.id not in event_id_list:
                         new_events_list.append(event)
                 self.queue[client_name].events = new_events_list
                 self.queue[client_name].last_seen = datetime.datetime.now()
                 self.queue[client_name].alive = True
                 return True
-            
+
             log.error(f'Attempted to ACK events for non-existent client \'{client_name}\'.')
             return False
-    
+
     def update_last_seen(self, client_name: str) -> bool:
         """
         Updates the last seen timestamp for a client.
@@ -178,13 +193,23 @@ class ICEEventQueue:
             log.error(f'Attempted to update last seen timestamp for non-existent client \'{client_name}\'.')
             return False
 
-    def _check_old_clients(self):
+    def _check_old_clients_and_events(self):
         """
         Removes inactive clients from the queue.
         """
         clients_to_delete = []
         with self.lock:
             current_time = datetime.datetime.now()
+
+            # Check and delete old events
+            new_event_list = []
+            for event in self.event_list:
+                time_diff = current_time - event.timestamp
+                if time_diff <= EVENT_INVALID_THRESHOLD_SECONDS:
+                    new_event_list.append(event)
+            self.event_list = new_event_list
+
+            # Check and delete old clients
             for client_name, client in self.queue.items():
                 time_diff = current_time - client.last_seen
                 if time_diff.total_seconds() > CLIENT_DELETE_THRESHOLD_SECONDS:
@@ -192,20 +217,20 @@ class ICEEventQueue:
                 elif time_diff.total_seconds() > CLIENT_INVALID_THRESHOLD_SECONDS:
                     self.queue[client_name].alive = False
                     ### TODO: Broadcast
-            
+
             for client_name in clients_to_delete:
                 ### TODO: Broadcast
                 log.info(f"Removing client '{client_name}' due to inactivity.")
                 del self.queue[client_name]
-    
-    def check_old_clients_worker(self):
+
+    def check_old_clients_and_events_worker(self):
         """
         Worker that periodically cleans up old clients.
         """
         log.info("Client cleanup worker started.")
         while state.is_server_up:
             try:
-                self._check_and_delete_old_client()
+                self._check_old_clients_and_events()
             except Exception as e:
                 log.warning(f'Unexpected error occured while checking and deleting old clients: {e}')
             eventlet.sleep(0.1)

@@ -28,14 +28,13 @@ class ICEClient:
         if client_type not in VALID_CLIENT_TYPE:
             raise ValueError(f'\'{client_type}\' is not a valid client type.')
 
-        self.client_name: str = client_name
-        self.client_type: str = client_type
+        self.name: str = client_name
+        self.type: str = client_type
         self.registered: datetime.datetime = datetime.datetime.now()
         self.last_seen: datetime.datetime = datetime.datetime.now()
         self.alive: bool = True
         self.last_fetched_event_id: str = current_event_id
         self.events: List[ICEEvent] = []
-
 
     def to_dict(self, json_friendly: bool = False) -> Dict[str, Any]:
         """
@@ -45,8 +44,8 @@ class ICEClient:
             Dict[str, Any]: A dictionary representation of the client.
         """
         return {
-            'client_name': self.client_name,
-            'client_type': self.client_type,
+            'name': self.name,
+            'type': self.type,
             'registered': self.registered if not json_friendly else self.last_seen.isoformat(),
             'last_seen': self.last_seen if not json_friendly else self.last_seen.isoformat(),
             'alive': self.alive,

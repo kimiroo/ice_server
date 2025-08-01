@@ -7,7 +7,9 @@ eventlet.monkey_patch() # Patch standard library early
 from flask import Flask
 from flask_socketio import SocketIO
 
+import test_state as state
 import test_sio as socket_events
+import flask_routes
 from ice_queue import ICEEventQueue
 from sid_manager import SIDManager
 
@@ -37,13 +39,13 @@ sidm = SIDManager(sio)
 socket_events.register_socketio(sio, queue, sidm)
 
 # Register all HTTP API routes
-#flask_routes.register_api_routes(app, socketio)
+flask_routes.register_api_routes(app, sio, queue)
 
 def main():
     try:
         # Start background worker greenlets
         worker_pool = eventlet.GreenPool()
-        check_old_clients_greenlet = worker_pool.spawn(queue.check_old_clients_worker)
+        check_old_clients_and_events_greenlet = worker_pool.spawn(queue.check_old_clients_and_events_worker)
         check_old_sids_greenlet = worker_pool.spawn(sidm.check_old_sids_worker)
 
         log.info("Starting main server...")
@@ -61,9 +63,12 @@ def main():
         traceback.print_exc() # Print full traceback
     finally:
         log.info("Signaling workers to stop...")
-        #state.is_server_up = False # Signal workers to stop gracefully
+        state.is_server_up = False # Signal workers to stop gracefully
         # Give workers a moment to finish their current loop iteration
         eventlet.sleep(0.5)
         # You might want to join the greenlets if they have critical cleanup,
         # but for daemon-like workers, setting the flag is often enough.
         log.info("Server cleanup complete. Application terminated.")
+
+if __name__ == '__main__':
+    main()
