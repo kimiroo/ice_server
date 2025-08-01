@@ -15,6 +15,7 @@ import flask_routes
 import utils.state as state
 from utils.config import CONFIG
 from utils.event_handler import EventHandler
+from utils.async_helper import run_async_in_eventlet
 from objects.ice_queue import ICEEventQueue
 from objects.sid_manager import SIDManager
 from onvif_.monitor_events import ONVIFMonitor
@@ -65,7 +66,8 @@ def main():
         worker_pool = eventlet.GreenPool()
         check_old_clients_and_events_greenlet = worker_pool.spawn(event_queue.check_old_clients_and_events_worker)
         check_old_sids_greenlet = worker_pool.spawn(sid_manager.check_old_sids_worker)
-        onvif_event_monitoring_greenlet = eventlet.asyncio.spawn_for_awaitable(
+        onvif_event_monitoring_greenlet = worker_pool.spawn(
+            run_async_in_eventlet,
             onvif_monitor.onvif_event_monitoring_worker(
                 socketio_instance=sio,
                 event_queue_instance=event_queue
