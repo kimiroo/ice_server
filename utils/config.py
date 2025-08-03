@@ -12,7 +12,6 @@ class Config:
         self.host = '0.0.0.0'
         self.port = 8080
 
-        self.onvif_enabled: bool = False
         self.onvif_host: str = None
         self.onvif_port: int = None
         self.onvif_username: str = None
@@ -39,11 +38,6 @@ class Config:
                 self.onvif_username = onvif_conf.get('username', '')
                 self.onvif_password = onvif_conf.get('password', '')
 
-                if isinstance(self.onvif_host, str):
-                    self.onvif_enabled = True
-                else:
-                    self.onvif_enabled = False
-
                 # Load Webhook Config
                 webhook_conf = config_data.get('webhook', {})
                 self.webhook_url = webhook_conf.get('url', None)
@@ -51,7 +45,7 @@ class Config:
                 self.webhook_data = webhook_conf.get('data', None)
                 self.webhook_headers = webhook_conf.get('headers', None)
 
-                if isinstance(self.webhook_url, str):
+                if isinstance(self.webhook_url, str) and self.webhook_url != '':
                     self.webhook_enabled = True
                 else:
                     self.webhook_enabled = False

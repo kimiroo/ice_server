@@ -1,4 +1,5 @@
 import logging
+import traceback
 from typing import Tuple
 
 import requests
@@ -16,6 +17,7 @@ class EventHandler:
     def __init__(self,
                  socketio_instance: SocketIO,
                  event_queue_instance: ICEEventQueue):
+
         self._sio = socketio_instance
         self._queue = event_queue_instance
 
@@ -26,7 +28,7 @@ class EventHandler:
             str: Returns message if any
         """
         try:
-            if not state.is_server_up:
+            if not state.is_armed:
                 log.info(f'Event \'{event.name}\' ignored. (reason: ICE is disarmed)')
                 return 'unarmed', None
 
@@ -41,13 +43,18 @@ class EventHandler:
             # Add to event queue
             self._queue.add_event(event)
 
+            sio_payload = {
+                'id': str(event.id),
+                'name': str(event.name),
+                'source': str(event.source),
+                'timestamp': event.timestamp.isoformat()
+            }
+
+            if event.data is not None:
+                sio_payload['data'] = event.data
+
             # Emit to all connected clients
-            self._sio.emit('event', {
-                'id': event.id,
-                'name': event.name,
-                'source': event.source,
-                'data': event.data
-            })
+            self._sio.emit('event', sio_payload)
 
             # Webhooks if needed
             if CONFIG.webhook_enabled:
@@ -72,6 +79,7 @@ class EventHandler:
                 else:
                     log.error(f"Unsupported HTTP method: {CONFIG.webhook_method}")
 
+            return 'broadcasted', None
 
         except Exception as e:
             event_name = None
@@ -80,4 +88,5 @@ class EventHandler:
             except:
                 pass
             log.error(f'Failed to handle event \'{event_name}\': {e}')
+            traceback.print_exc()
             return 'failed', str(e)

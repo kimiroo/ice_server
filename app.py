@@ -1,12 +1,12 @@
 import os
 import logging
 import traceback
+import queue
+import threading
 
 # Load log level config
 LOG_LEVEL_ENV = os.getenv('LOG_LEVEL', 'INFO').upper()
 VALID_LOG_LEVELS = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']
-
-
 
 if LOG_LEVEL_ENV in VALID_LOG_LEVELS:
     logging_level = getattr(logging, LOG_LEVEL_ENV)
@@ -32,10 +32,10 @@ import flask_routes
 import utils.state as state
 from utils.config import CONFIG
 from utils.event_handler import EventHandler
-from utils.async_helper import run_async_in_eventlet
 from objects.ice_queue import ICEEventQueue
 from objects.sid_manager import SIDManager
 from onvif_.monitor_events import ONVIFMonitor
+from onvif_.process_event import ONVIFEventProcessor
 
 # Load app
 app = Flask(__name__)
@@ -50,7 +50,8 @@ sio = SocketIO(app,
 event_queue = ICEEventQueue(sio)
 sid_manager = SIDManager(sio)
 event_handler = EventHandler(sio, event_queue)
-onvif_monitor = ONVIFMonitor(event_handler)
+onvif_queue = queue.Queue()
+onvif_monitor = ONVIFMonitor(onvif_queue)
 
 # Register all Socket.IO event handlers
 socket_events.register_socketio(sio, event_queue, sid_manager, event_handler)
@@ -60,16 +61,18 @@ flask_routes.register_api_routes(app, sio, event_queue)
 
 def main():
     try:
+        # Start ONVIF worker
+        onvif_thread = threading.Thread(
+            target=onvif_monitor.onvif_event_monitoring_worker,
+            daemon=True)
+        onvif_thread.start()
+        onvif_event_processor = ONVIFEventProcessor(onvif_queue, event_handler)
+
         # Start background worker greenlets
         worker_pool = eventlet.GreenPool()
         check_old_clients_and_events_greenlet = worker_pool.spawn(event_queue.check_old_clients_and_events_worker)
         check_old_sids_greenlet = worker_pool.spawn(sid_manager.check_old_sids_worker)
-        onvif_event_monitoring_greenlet = worker_pool.spawn(
-            onvif_monitor.onvif_event_monitoring_worker(
-                socketio_instance=sio,
-                event_queue_instance=event_queue
-            )
-        )
+        process_onvif_event_greenlet = worker_pool.spawn(onvif_event_processor.monitor_onvif_event_queue)
 
         log.info("Starting main server...")
         log.info(f"Listening on \'{CONFIG.host}:{CONFIG.port}\'...")

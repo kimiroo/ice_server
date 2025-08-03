@@ -146,7 +146,7 @@ class ICEEventQueue:
                     time_now = datetime.datetime.now()
                     time_diff = time_now - event.timestamp
 
-                    if time_diff <= EVENT_INVALID_THRESHOLD_SECONDS:
+                    if time_diff.total_seconds() <= EVENT_INVALID_THRESHOLD_SECONDS:
                         return True
             return False
 

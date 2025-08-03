@@ -9,7 +9,7 @@ class ICEEvent:
                  event_id: str,
                  event_name: str,
                  event_source: str,
-                 event_data: Dict[str, Any], # event_data can be a dictionary with various types
+                 event_data: Dict[str, Any] = None, # event_data can be a dictionary with various types
                  event_timestamp: datetime.datetime = None # Default to None and set inside for current time
                  ):
         """
