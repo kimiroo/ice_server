@@ -15,6 +15,7 @@ class ICEClient:
     Represents an ICE client.
     """
     def __init__(self,
+                 sid: str,
                  client_name: str,
                  client_type: str,
                  current_event_id: str):
@@ -28,6 +29,7 @@ class ICEClient:
         if client_type not in VALID_CLIENT_TYPE:
             raise ValueError(f'\'{client_type}\' is not a valid client type.')
 
+        self.sid: str = sid
         self.name: str = client_name
         self.type: str = client_type
         self.registered: datetime.datetime = datetime.datetime.now()
@@ -36,19 +38,24 @@ class ICEClient:
         self.last_fetched_event_id: str = current_event_id
         self.events: List[ICEEvent] = []
 
-    def to_dict(self, json_friendly: bool = False) -> Dict[str, Any]:
+    def to_dict(self, simplified: bool, json_friendly: bool) -> Dict[str, Any]:
         """
         Converts the ICEClient object to a dictionary.
 
         Returns:
             Dict[str, Any]: A dictionary representation of the client.
         """
-        return {
+        client_obj = {
+            'sid': self.sid,
             'name': self.name,
             'type': self.type,
             'registered': self.registered if not json_friendly else self.registered.isoformat(),
             'last_seen': self.last_seen if not json_friendly else self.last_seen.isoformat(),
-            'alive': self.alive,
-            'last_fetched_event_id': self.last_fetched_event_id,
-            'events': self.events if not json_friendly else [event.to_dict(json_friendly) for event in self.events]
+            'alive': self.alive
         }
+
+        if not simplified:
+            client_obj['last_fetched_event_id'] = self.last_fetched_event_id
+            client_obj['events'] = self.events if not json_friendly else [event.to_dict(json_friendly) for event in self.events]
+
+        return client_obj

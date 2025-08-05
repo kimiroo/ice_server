@@ -1,7 +1,7 @@
 import uuid
 import logging
 from flask import request
-from flask_socketio import SocketIO, emit, join_room, leave_room, disconnect
+from flask_socketio import SocketIO, emit, disconnect
 
 import utils.state as state
 import utils.utils as utils
@@ -9,19 +9,13 @@ from utils.event_handler import EventHandler
 from objects.ice_client import ICEClient
 from objects.ice_event import ICEEvent
 from objects.ice_queue import ICEEventQueue
-from objects.sid_manager import SIDManager, SIDObject
 
 log = logging.getLogger(__name__)
-
-ROOM_HTML = state.ROOM_HTML
-ROOM_PC = state.ROOM_PC
-ROOM_HA = state.ROOM_HA
 
 CLIENT_TYPES_TO_TRACK = ['pc', 'ha', 'html']
 
 def register_socketio(socketio_instance: SocketIO,
                       event_queue_instance: ICEEventQueue,
-                      sid_manager_instance: SIDManager,
                       event_handler_instance: EventHandler):
     """
     Registers all Socket.IO event handlers with the given SocketIO instance.
@@ -30,35 +24,16 @@ def register_socketio(socketio_instance: SocketIO,
     @socketio_instance.on('connect')
     def handle_connect():
         try:
+            client = None
             headers = dict(request.headers)
             client_type, client_name = utils.identify_client(headers, request.sid)
 
             log.info(f'Client connecting - Type: {client_type}, Name: {client_name}, SID: {request.sid}')
 
-            if client_type == 'html':
-                join_room(ROOM_HTML)
-                log.info(f'HTML client \'{request.sid}\' joined \'{ROOM_HTML}\' room.')
-
-            elif client_type == 'pc':
+            if client_type == 'pc' or client_type == 'ha' or client_type == 'test':
                 if not client_name:
-                    log.warning(f'PC client {request.sid} connected without client_name')
-                    emit('error', {'message': 'client name is required for PC clients'})
-                    return False
-                join_room(ROOM_PC)
-                log.info(f'PC client \'{client_name}\' (SID: {request.sid}) joined \'{ROOM_PC}\' room.')
-
-            elif client_type == 'ha':
-                if not client_name:
-                    log.warning(f'HA client {request.sid} connected without client name')
-                    emit('error', {'message': 'client name is required for HA clients'})
-                    return False
-                join_room(ROOM_HA)
-                log.info(f'HA client \'{client_name}\' (SID: {request.sid}) joined \'{ROOM_HA}\' room.')
-
-            elif client_type == 'test':
-                if not client_name:
-                    log.warning(f'TEST client {request.sid} connected without client name')
-                    emit('error', {'message': 'client name is required for TEST clients'})
+                    log.warning(f'{client_type.upper()} client {request.sid} connected without client_name')
+                    emit('error', {'message': f'client name is required for {client_type.upper()} clients'})
                     return False
 
             else:
@@ -66,9 +41,8 @@ def register_socketio(socketio_instance: SocketIO,
                 emit('error', {'message': 'Unknown client type'})
                 return False
 
-            sid_manager_instance.add_sid(request.sid, client_name, client_type)
             if client_type in CLIENT_TYPES_TO_TRACK:
-                event_queue_instance.add_client(client_name, client_type)
+                client = event_queue_instance.add_client(request.sid, client_name, client_type)
 
             emit('connected', {
                 'status': 'success',
@@ -84,13 +58,7 @@ def register_socketio(socketio_instance: SocketIO,
                     event_name='connected',
                     event_type='client',
                     event_source='server',
-                    event_data={
-                        'client': {
-                            'clientName': client_name,
-                            'clientType': client_type,
-                            'sid': request.sid
-                        }
-                    }
+                    event_data=client.to_dict(simplified=True, json_friendly=True)
                 )
                 event_handler_instance.broadcast(event)
 
@@ -105,44 +73,27 @@ def register_socketio(socketio_instance: SocketIO,
     @socketio_instance.on('disconnect')
     def handle_disconnect():
         try:
-            if sid_manager_instance.is_test_client(request.sid):
-                sid_manager_instance.remove_sid(request.sid)
+            client = event_queue_instance.get_client(request.sid)
+
+            if client is None:
+                log.debug(f"Disconnected client SID {request.sid} not found in connected clients list.")
                 return
 
-            sid_obj: SIDObject = sid_manager_instance.get_sid_object(request.sid)
-            client_obj: ICEClient = None
-            client_name: str = None
-            client_type: str = None
+            log.info(f'Client disconnecting - Type: {client.type}, Name: {client.name}, SID: {request.sid}')
 
-            if sid_obj is not None:
-                try:
-                    client_name = sid_obj.client_name
-                    client_obj = event_queue_instance.get_client(request.sid)
-                    client_type = client_obj.type
-                    sid_manager_instance.remove_sid(request.sid)
-                except:
-                    pass
+            event = ICEEvent(
+                event_id=uuid.uuid4(),
+                event_name='disconnected',
+                event_type='client',
+                event_source='server',
+                event_data={
+                    'client': client.to_dict(simplified=True, json_friendly=True)
+                }
+            )
+            event_handler_instance.broadcast(event)
 
-            sid_list = sid_manager_instance.get_sid_list(client_name, False)
-
-            if len(sid_list) == 0:
-                ### Broadcast
-                event = ICEEvent(
-                    event_id=uuid.uuid4(),
-                    event_name='disconnected',
-                    event_type='client',
-                    event_source='server',
-                    event_data={
-                        'client': {
-                            'clientName': client_name,
-                            'clientType': client_type,
-                            'sid': request.sid
-                        }
-                    }
-                )
-                event_handler_instance.broadcast(event)
-            else:
-                log.warning(f"Disconnected client SID {request.sid} not found in connected_clients.")
+            client = None
+            event_queue_instance.remove_client(request.sid)
         except Exception as e:
             log.error(f'Error in handle_disconnect: {e}')
 
@@ -163,7 +114,7 @@ def register_socketio(socketio_instance: SocketIO,
                     'result': 'failed',
                     'message': 'Event must specify \'event\' field.'
                 })
-                return False
+                return
 
             if not event_id:
                 log.error(f'Invalid event received: \'{data}\'. Event must specify \'id\' field.')
@@ -172,7 +123,7 @@ def register_socketio(socketio_instance: SocketIO,
                     'result': 'failed',
                     'message': 'Event must specify \'id\' field.'
                 })
-                return False
+                return
 
             if not event_type:
                 log.error(f'Invalid event received: \'{data}\'. Event must specify \'type\' field.')
@@ -181,7 +132,7 @@ def register_socketio(socketio_instance: SocketIO,
                     'result': 'failed',
                     'message': 'Event must specify \'type\' field.'
                 })
-                return False
+                return
 
             if not event_source:
                 log.error(f'Invalid event received: \'{data}\'. Event must specify \'source\' field.')
@@ -190,7 +141,7 @@ def register_socketio(socketio_instance: SocketIO,
                     'result': 'failed',
                     'message': 'Event must specify \'source\' field.'
                 })
-                return False
+                return
 
             event = ICEEvent(
                 event_id=event_id,
@@ -241,8 +192,8 @@ def register_socketio(socketio_instance: SocketIO,
     def handle_ping():
         try:
             # Update last_seen and alive
-            sid_obj = sid_manager_instance.get_sid_object(request.sid)
-            if sid_obj is None:
+            client = event_queue_instance.get_client(request.sid)
+            if client is None:
                 emit('pong', {
                     'result': 'failed',
                     'reason': 'disconnected'
@@ -250,11 +201,8 @@ def register_socketio(socketio_instance: SocketIO,
                 disconnect()
                 return
 
-            client_name = sid_obj.client_name
-            sid_manager_instance.update_last_seen(request.sid)
-            event_queue_instance.update_last_seen(client_name)
-
-            lookup_result, event_queue = event_queue_instance.get_events(client_name)
+            event_queue_instance.update_last_seen(request.sid)
+            lookup_result, event_queue = event_queue_instance.get_events(request.sid)
 
             event_queue_list = []
             if lookup_result:
@@ -281,20 +229,18 @@ def register_socketio(socketio_instance: SocketIO,
             event_id_list = data.get('ackList', [])
 
             # Update last_seen and alive
-            sid_obj = sid_manager_instance.get_sid_object(request.sid)
-            if sid_obj is None:
+            client = event_queue_instance.get_client(request.sid)
+            if client is None:
                 emit('ack_result', {
                     'result': 'failed',
                     'reason': 'disconnected'
                 })
                 disconnect()
 
-            client_name = sid_obj.client_name
-            sid_manager_instance.update_last_seen(request.sid)
-            event_queue_instance.update_last_seen(client_name)
+            event_queue_instance.update_last_seen(request.sid)
 
             # ACK events
-            ack_result = event_queue_instance.ack_events(client_name, event_id_list)
+            ack_result = event_queue_instance.ack_events(request.sid, event_id_list)
 
             result = 'success' if ack_result else 'failed'
 
@@ -355,19 +301,13 @@ def register_socketio(socketio_instance: SocketIO,
     def handle_restore_queue(data):
         try:
             last_fetched_id = data.get('id', None)
-            sid_object = sid_manager_instance.get_sid_object(request.sid)
-            client_name = None
+            client = event_queue_instance.get_client(request.sid)
 
-            try:
-                client_name = sid_object.client_name
-            except:
-                pass
+            if client is None or last_fetched_id is None:
+                log.error(f'Failed to get client info or last fetched event id.')
+                return
 
-            if client_name is not None and last_fetched_id is not None:
-                log.debug(f'Restoring event queue of client \'{client_name}\' with event id \'{last_fetched_id}\'...')
-                event_queue_instance.restore_queue(client_name, last_fetched_id)
-            else:
-                log.error(f'Failed to get client name or last fetched event id.')
+            event_queue_instance.restore_queue(request.sid, last_fetched_id)
 
         except Exception as e:
-            log.error(f'Failed to restore event queue for client \'{client_name}\': {e}')
+            log.error(f'Failed to restore event queue for client \'{request.sid}\': {e}')

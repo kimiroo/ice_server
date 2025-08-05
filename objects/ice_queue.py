@@ -33,26 +33,32 @@ class ICEEventQueue:
         self.event_list: List[ICEEvent] = []
         self.lock = threading.Lock()
 
-    def add_client(self, client_name: str, client_type: str) -> None:
+    def add_client(self, sid: str, client_name: str, client_type: str) -> ICEClient:
         """
         Adds a client from the queue.
 
         Args:
+            sid (str): SID
             client_name (str): Client Name
             client_type (str): Client Type
         """
-        client = ICEClient(client_name,
+        client = ICEClient(sid,
+                           client_name,
                            client_type,
                            self.last_event_id)
         with self.lock:
             if client_name not in self.queue:
                 self.queue[client_name] = client
-                log.info(f'Client \'{client.name}\' added to the queue.')
+                log.debug(f'Client \'{client.name}\' added to the queue.')
             else:
-                log.debug(f'Client \'{client_name}\' already exists in the queue. Updating timestamp.')
+                log.debug(f'Client \'{client_name}\' already exists in the queue. Updating...')
+                self.queue[client_name].sid = sid
                 self.queue[client_name].last_seen = datetime.datetime.now()
+                self.queue[client_name].alive = True
 
-    def remove_client(self, client_name: str) -> bool:
+            return self.queue[client_name]
+
+    def remove_client(self, sid: str) -> bool:
         """
         Removes a client from the queue.
 
@@ -63,24 +69,29 @@ class ICEEventQueue:
             bool: True if the client was found and removed, False otherwise.
         """
         with self.lock:
-            if client_name in self.queue:
-                del self.queue[client_name]
-                log.debug(f'Client \'{client_name}\' removed from the queue.')
-                return True
-            log.debug(f'Attempted to remove non-existent client \'{client_name}\' from the queue.')
-            return False
+            client = self.get_client(sid)
+            if client is None:
+                log.debug(f'Attempted to remove non-existent client \'{sid}\' from the queue.')
+                return False
 
-    def get_client(self, client_name: str) -> ICEClient:
+            log.debug(f'Client \'{sid}\' (Client name: \'{client.name}\') removed from the queue.')
+            del self.queue[client.name]
+            return True
+
+    def get_client(self, sid: str) -> ICEClient:
         """
-        Returns the client object for a given client name.
+        Returns the client object for a given SID.
 
         Args:
-            client_name (str): Client Name
+            sid (str): SID
 
         Returns:
             ICEClient: The client object if found, None otherwise.
         """
-        return self.queue.get(client_name, None)
+        for client_name, client in self.queue.items():
+            if client.sid == sid:
+                return client
+        return None
 
     def get_client_list(self, client_type: str, is_alive: bool, json_friendly: bool) -> List[ICEClient]:
         """
@@ -126,21 +137,23 @@ class ICEEventQueue:
                 log.debug(f'Event \'{event.name}\' added to client \'{client_name}\'.')
             self.last_event_id = event.id
 
-    def get_events(self, client_name: str) -> Tuple[bool, List[ICEEvent]]:
+    def get_events(self, sid: str) -> Tuple[bool, List[ICEEvent]]:
         """
         Retrieves all events for a specific client.
 
         Args:
-            client_name (str): Client Name
+            sid (str): SID
 
         Returns:
             Tuple[bool, List[ICEEvent]]: (True, events) if client found, (False, []) if client not found.
         """
         with self.lock:
-            if client_name in self.queue:
-                return True, self.queue[client_name].events
-            log.error(f'Attempted to get events for non-existent client \'{client_name}\'.')
-            return False, []
+            client = self.get_client(sid)
+            if client is None:
+                log.error(f'Attempted to get events for non-existent client \'{sid}\'.')
+                return False, []
+            else:
+                return True, client.events
 
     def is_previous_event_valid(self, event_name: str) -> bool:
         with self.lock:
@@ -153,34 +166,43 @@ class ICEEventQueue:
                         return True
             return False
 
-    def ack_events(self, client_name: str, event_id_list: List[str]) -> bool:
+    def ack_events(self, sid: str, event_id_list: List[str]) -> bool:
         """
         ACK event_ids for a client and updates last seen timestamp.
 
         Args:
-            client_name (str): Client Name
+            sid (str): SID
             event_id_list (List[str]): List of event IDs to ACK.
 
         Returns:
             bool: Result of ACKing events.
         """
-        new_events_list = []
         with self.lock:
-            if client_name in self.queue:
-                for event in self.queue[client_name].events:
-                    if str(event.id) not in event_id_list:
-                        new_events_list.append(event)
-                self.queue[client_name].events = new_events_list
-                self.queue[client_name].last_seen = datetime.datetime.now()
-                self.queue[client_name].alive = True
-                return True
+            client = self.get_client(sid)
+            new_events_list = []
 
-            log.error(f'Attempted to ACK events for non-existent client \'{client_name}\'.')
-            return False
+            if client is None:
+                log.error(f'Attempted to ACK events for non-existent client \'{sid}\'.')
+                return False
 
-    def restore_queue(self, client_name: str, event_id: str) -> bool:
+            for event in self.queue[client.name].events:
+                if str(event.id) not in event_id_list:
+                    new_events_list.append(event)
+
+            self.queue[client.name].events = new_events_list
+            self.queue[client.name].last_seen = datetime.datetime.now()
+            self.queue[client.name].alive = True
+
+            return True
+
+    def restore_queue(self, sid: str, event_id: str) -> bool:
         try:
             with self.lock:
+                client = self.get_client(sid)
+                if client is None:
+                    log.error(f'Attemped to restore event queue for non-existent client \'{sid}\' with event id \'{event_id}\'')
+                    return False
+
                 new_event_queue = []
                 for event in reversed(self.event_list):
                     if event.id != event_id:
@@ -189,15 +211,16 @@ class ICEEventQueue:
                         break
                 new_event_queue = reversed(new_event_queue)
 
-                self.queue[client_name].events = new_event_queue
+                self.queue[client.name].last_fetched_event_id = event_id
+                self.queue[client.name].events = new_event_queue
 
                 return True
 
         except:
-            log.error(f'Error while restoring event queue for client \'{client_name}\' with event id \'{event_id}\'')
+            log.error(f'Error while restoring event queue for client \'{sid}\' with event id \'{event_id}\'')
             return False
 
-    def update_last_seen(self, client_name: str) -> bool:
+    def update_last_seen(self, sid: str) -> bool:
         """
         Updates the last seen timestamp for a client.
 
@@ -208,12 +231,14 @@ class ICEEventQueue:
             bool: Result of updating last seen timestamp.
         """
         with self.lock:
-            if client_name in self.queue:
-                self.queue[client_name].last_seen = datetime.datetime.now()
-                self.queue[client_name].alive = True
-                return True
-            log.error(f'Attempted to update last seen timestamp for non-existent client \'{client_name}\'.')
-            return False
+            client = self.get_client(sid)
+            if client is None:
+                log.error(f'Attempted to update last seen timestamp for non-existent client \'{sid}\'.')
+                return False
+
+            self.queue[client.name].last_seen = datetime.datetime.now()
+            self.queue[client.name].alive = True
+            return True
 
     def _check_old_clients_and_events(self):
         """
@@ -246,12 +271,7 @@ class ICEEventQueue:
                         event_name='outdated',
                         event_type='client',
                         event_source='server',
-                        event_data={
-                            'client': {
-                                'clientName': client.name,
-                                'clientType': client.type
-                            }
-                        }
+                        event_data=client.to_dict(simplified=True, json_friendly=True)
                     )
                     self._eh.broadcast(event)
 
@@ -265,12 +285,7 @@ class ICEEventQueue:
                     event_name='disconnected',
                     event_type='client',
                     event_source='server',
-                    event_data={
-                        'client': {
-                            'clientName': client.name,
-                            'clientType': client.type
-                        }
-                    }
+                    event_data=client.to_dict(simplified=True, json_friendly=True)
                 )
                 self._eh.broadcast(event)
 

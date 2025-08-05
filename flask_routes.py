@@ -1,5 +1,4 @@
 import logging
-import eventlet
 from flask import Flask, render_template, jsonify, request
 from flask_socketio import SocketIO, emit
 

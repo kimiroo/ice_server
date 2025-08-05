@@ -33,9 +33,8 @@ import utils.state as state
 from utils.config import CONFIG
 from utils.event_handler import EventHandler
 from objects.ice_queue import ICEEventQueue
-from objects.sid_manager import SIDManager
-#from onvif_.monitor_events import ONVIFMonitor
-#from onvif_.process_event import ONVIFEventProcessor
+from onvif_.monitor_events import ONVIFMonitor
+from onvif_.process_event import ONVIFEventProcessor
 
 # Load app
 app = Flask(__name__)
@@ -48,15 +47,14 @@ sio = SocketIO(app,
                ping_timeout=2,
                ping_interval=.1)
 event_queue = ICEEventQueue(None)
-sid_manager = SIDManager(None)
 event_handler = EventHandler(sio, event_queue)
-onvif_queue = queue.Queue()
 event_queue._eh = event_handler
-sid_manager._eh = event_handler
-#onvif_monitor = ONVIFMonitor(onvif_queue)
+
+onvif_queue = queue.Queue()
+onvif_monitor = ONVIFMonitor(onvif_queue)
 
 # Register all Socket.IO event handlers
-socket_events.register_socketio(sio, event_queue, sid_manager, event_handler)
+socket_events.register_socketio(sio, event_queue, event_handler)
 
 # Register all HTTP API routes
 flask_routes.register_api_routes(app, sio, event_queue)
@@ -64,17 +62,16 @@ flask_routes.register_api_routes(app, sio, event_queue)
 def main():
     try:
         # Start ONVIF worker
-        #onvif_thread = threading.Thread(
-        #    target=onvif_monitor.onvif_event_monitoring_worker,
-        #    daemon=True)
-        #onvif_thread.start()
-        #onvif_event_processor = ONVIFEventProcessor(onvif_queue, event_handler)
+        onvif_thread = threading.Thread(
+            target=onvif_monitor.onvif_event_monitoring_worker,
+            daemon=True)
+        onvif_thread.start()
+        onvif_event_processor = ONVIFEventProcessor(onvif_queue, event_handler)
 
         # Start background worker greenlets
         worker_pool = eventlet.GreenPool()
         check_old_clients_and_events_greenlet = worker_pool.spawn(event_queue.check_old_clients_and_events_worker)
-        check_old_sids_greenlet = worker_pool.spawn(sid_manager.check_old_sids_worker)
-        #process_onvif_event_greenlet = worker_pool.spawn(onvif_event_processor.monitor_onvif_event_queue)
+        process_onvif_event_greenlet = worker_pool.spawn(onvif_event_processor.monitor_onvif_event_queue)
 
         log.info("Starting main server...")
         log.info(f"Listening on \'{CONFIG.host}:{CONFIG.port}\'...")
