@@ -1,16 +1,19 @@
+import uuid
 import logging
 import datetime
 import threading
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, TYPE_CHECKING
 
 import eventlet
 # WARNING: Add eventlet.monkey_patch() in main app
 
-from flask_socketio import SocketIO
-
 import utils.state as state
 from objects.ice_event import ICEEvent
 from objects.ice_client import ICEClient
+
+if TYPE_CHECKING:
+    from utils.event_handler import EventHandler
+
 
 CLIENT_INVALID_THRESHOLD_SECONDS = 2 # 2 seconds
 CLIENT_DELETE_THRESHOLD_SECONDS = 30 # 30 seconds
@@ -23,9 +26,9 @@ class ICEEventQueue:
     """
     Manages a thread-safe event queue for multiple clients.
     """
-    def __init__(self, socketio_instance: SocketIO):
+    def __init__(self, event_handler_instance: 'EventHandler'):
         self.last_event_id: str = None
-        self.sio: SocketIO = socketio_instance
+        self._eh: 'EventHandler' = event_handler_instance
         self.queue: Dict[str, ICEClient] = {}
         self.event_list: List[ICEEvent] = []
         self.lock = threading.Lock()
@@ -165,7 +168,7 @@ class ICEEventQueue:
         with self.lock:
             if client_name in self.queue:
                 for event in self.queue[client_name].events:
-                    if event.id not in event_id_list:
+                    if str(event.id) not in event_id_list:
                         new_events_list.append(event)
                 self.queue[client_name].events = new_events_list
                 self.queue[client_name].last_seen = datetime.datetime.now()
@@ -216,7 +219,7 @@ class ICEEventQueue:
         """
         Removes inactive clients from the queue.
         """
-        clients_to_delete = []
+        clients_to_delete: List[ICEClient] = []
         with self.lock:
             current_time = datetime.datetime.now()
 
@@ -232,15 +235,44 @@ class ICEEventQueue:
             for client_name, client in self.queue.items():
                 time_diff = current_time - client.last_seen
                 if time_diff.total_seconds() > CLIENT_DELETE_THRESHOLD_SECONDS:
-                    clients_to_delete.append(client_name)
-                elif time_diff.total_seconds() > CLIENT_INVALID_THRESHOLD_SECONDS:
+                    clients_to_delete.append(client)
+                elif time_diff.total_seconds() > CLIENT_INVALID_THRESHOLD_SECONDS and client.alive == True:
+                    log.info(f"Marking client '{client_name}' inactive due to inactivity.")
                     self.queue[client_name].alive = False
-                    ### TODO: Broadcast
 
-            for client_name in clients_to_delete:
-                ### TODO: Broadcast
-                log.info(f"Removing client '{client_name}' due to inactivity.")
-                del self.queue[client_name]
+                    # Broadcast
+                    event = ICEEvent(
+                        event_id=uuid.uuid4(),
+                        event_name='outdated',
+                        event_type='client',
+                        event_source='server',
+                        event_data={
+                            'client': {
+                                'clientName': client.name,
+                                'clientType': client.type
+                            }
+                        }
+                    )
+                    self._eh.broadcast(event)
+
+            for client in clients_to_delete:
+                log.info(f"Removing client '{client.name}' due to inactivity.")
+                del self.queue[client.name]
+
+                # Broadcast
+                event = ICEEvent(
+                    event_id=uuid.uuid4(),
+                    event_name='disconnected',
+                    event_type='client',
+                    event_source='server',
+                    event_data={
+                        'client': {
+                            'clientName': client.name,
+                            'clientType': client.type
+                        }
+                    }
+                )
+                self._eh.broadcast(event)
 
     def check_old_clients_and_events_worker(self):
         """

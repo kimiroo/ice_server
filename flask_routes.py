@@ -20,7 +20,7 @@ def register_api_routes(flask_instance: Flask,
 
     @flask_instance.route('/')
     def index():
-        return render_template('index.html')
+        return render_template('layout.html')
 
     @flask_instance.route('/api/v1/arm/activate', methods=['POST'])
     def arm_activate():

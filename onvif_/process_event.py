@@ -34,6 +34,7 @@ class ONVIFEventProcessor:
                 event = ICEEvent(
                     event_id=uuid.uuid4(),
                     event_name=event.event_name,
+                    event_type='onvif',
                     event_source='server'
                 )
 

@@ -8,6 +8,7 @@ class ICEEvent:
     def __init__(self,
                  event_id: str,
                  event_name: str,
+                 event_type: str,
                  event_source: str,
                  event_data: Dict[str, Any] = None, # event_data can be a dictionary with various types
                  event_timestamp: datetime.datetime = None # Default to None and set inside for current time
@@ -23,6 +24,7 @@ class ICEEvent:
         """
         self.id: str = event_id
         self.name: str = event_name
+        self.type: str = event_type
         self.source: str = event_source
         self.data: Dict[str, Any] = event_data
         # Assign current time if timestamp is not provided
@@ -36,8 +38,9 @@ class ICEEvent:
             Dict[str, Any]: A dictionary representation of the event.
         """
         return {
-            'id': self.id,
+            'id': str(self.id),
             'name': self.name,
+            'type:': self.type,
             'source': self.source,
             'data': self.data,
             'timestamp': self.timestamp if not json_friendly else self.timestamp.isoformat()

@@ -1,6 +1,6 @@
 import logging
 import traceback
-from typing import Tuple
+from typing import Tuple, TYPE_CHECKING
 
 import requests
 from flask_socketio import SocketIO
@@ -9,14 +9,23 @@ import utils.state as state
 from utils.config import CONFIG
 from utils.template_replacer import replace_values_in_dict
 from objects.ice_event import ICEEvent
-from objects.ice_queue import ICEEventQueue
+
+if TYPE_CHECKING:
+    from objects.ice_queue import ICEEventQueue
+
+VALIDITY_CHECK_TARGET_EVENT_NAMES = [
+    # TODO
+]
+VALIDITY_CHECK_TARGET_EVENT_TYPES = [
+    'onvif'
+]
 
 log = logging.getLogger(__name__)
 
 class EventHandler:
     def __init__(self,
                  socketio_instance: SocketIO,
-                 event_queue_instance: ICEEventQueue):
+                 event_queue_instance: 'ICEEventQueue'):
 
         self._sio = socketio_instance
         self._queue = event_queue_instance
@@ -33,7 +42,9 @@ class EventHandler:
                 return 'unarmed', None
 
             is_previous_event_valid = self._queue.is_previous_event_valid(event.name)
-            if is_previous_event_valid:
+            if (is_previous_event_valid and
+                ((event.name in VALIDITY_CHECK_TARGET_EVENT_NAMES) or
+                 (event.type in VALIDITY_CHECK_TARGET_EVENT_TYPES))):
                 log.info(f'Previous event \'{event.name}\' is still valid. Ignoring this event...')
                 return 'ignored', None
 
@@ -46,6 +57,7 @@ class EventHandler:
             sio_payload = {
                 'id': str(event.id),
                 'name': str(event.name),
+                'type': str(event.type),
                 'source': str(event.source),
                 'timestamp': event.timestamp.isoformat()
             }

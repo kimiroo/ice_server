@@ -46,7 +46,7 @@ class ICEClient:
         return {
             'name': self.name,
             'type': self.type,
-            'registered': self.registered if not json_friendly else self.last_seen.isoformat(),
+            'registered': self.registered if not json_friendly else self.registered.isoformat(),
             'last_seen': self.last_seen if not json_friendly else self.last_seen.isoformat(),
             'alive': self.alive,
             'last_fetched_event_id': self.last_fetched_event_id,

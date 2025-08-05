@@ -1,7 +1,7 @@
-import datetime
+import uuid
 import logging
 from flask import request
-from flask_socketio import SocketIO, emit, join_room, leave_room
+from flask_socketio import SocketIO, emit, join_room, leave_room, disconnect
 
 import utils.state as state
 import utils.utils as utils
@@ -78,17 +78,21 @@ def register_socketio(socketio_instance: SocketIO,
             })
 
             if client_type in CLIENT_TYPES_TO_TRACK:
-                socketio_instance.emit(f'event', {
-                    'event': 'connected',
-                    'eventType': 'client',
-                    'data': {
+                ### Broadcast
+                event = ICEEvent(
+                    event_id=uuid.uuid4(),
+                    event_name='connected',
+                    event_type='client',
+                    event_source='server',
+                    event_data={
                         'client': {
                             'clientName': client_name,
                             'clientType': client_type,
                             'sid': request.sid
                         }
                     }
-                })
+                )
+                event_handler_instance.broadcast(event)
 
         except Exception as e:
             log.error(f'Error in handle_connect: {e}')
@@ -123,27 +127,31 @@ def register_socketio(socketio_instance: SocketIO,
 
             if len(sid_list) == 0:
                 ### Broadcast
-                socketio_instance.emit('event', {
-                    'event': 'disconnected',
-                    'eventType': 'client',
-                    'data': {
+                event = ICEEvent(
+                    event_id=uuid.uuid4(),
+                    event_name='disconnected',
+                    event_type='client',
+                    event_source='server',
+                    event_data={
                         'client': {
                             'clientName': client_name,
                             'clientType': client_type,
                             'sid': request.sid
                         }
                     }
-                })
+                )
+                event_handler_instance.broadcast(event)
             else:
                 log.warning(f"Disconnected client SID {request.sid} not found in connected_clients.")
         except Exception as e:
             log.error(f'Error in handle_disconnect: {e}')
 
     @socketio_instance.on('event')
-    def handle_event(data):
+    def handle_event(data = {}):
         try:
             event_id = data.get('id', None)
             event_name = data.get('event', None)
+            event_type = data.get('type', None)
             event_source = data.get('source', None)
             event_data = data.get('data', None)
 
@@ -166,6 +174,15 @@ def register_socketio(socketio_instance: SocketIO,
                 })
                 return False
 
+            if not event_type:
+                log.error(f'Invalid event received: \'{data}\'. Event must specify \'type\' field.')
+                emit('event_result', {
+                    'id': event_id,
+                    'result': 'failed',
+                    'message': 'Event must specify \'type\' field.'
+                })
+                return False
+
             if not event_source:
                 log.error(f'Invalid event received: \'{data}\'. Event must specify \'source\' field.')
                 emit('event_result', {
@@ -178,6 +195,7 @@ def register_socketio(socketio_instance: SocketIO,
             event = ICEEvent(
                 event_id=event_id,
                 event_name=event_name,
+                event_type=event_type,
                 event_source=event_source,
                 event_data=event_data
             )
@@ -224,6 +242,14 @@ def register_socketio(socketio_instance: SocketIO,
         try:
             # Update last_seen and alive
             sid_obj = sid_manager_instance.get_sid_object(request.sid)
+            if sid_obj is None:
+                emit('pong', {
+                    'result': 'failed',
+                    'reason': 'disconnected'
+                })
+                disconnect()
+                return
+
             client_name = sid_obj.client_name
             sid_manager_instance.update_last_seen(request.sid)
             event_queue_instance.update_last_seen(client_name)
@@ -231,8 +257,9 @@ def register_socketio(socketio_instance: SocketIO,
             lookup_result, event_queue = event_queue_instance.get_events(client_name)
 
             event_queue_list = []
-            for event in event_queue:
-                event_queue_list.append(event.to_dict())
+            if lookup_result:
+                for event in event_queue:
+                    event_queue_list.append(event.to_dict(json_friendly=True))
 
             result = 'success' if lookup_result else 'failed'
 
@@ -243,17 +270,25 @@ def register_socketio(socketio_instance: SocketIO,
             })
 
         except Exception as e:
+            log.error(f'Error while handling PING: {e}')
             emit('pong', {
                 'result': 'failed'
             })
 
     @socketio_instance.on('ack')
-    def handle_ack(data):
+    def handle_ack(data = {}):
         try:
             event_id_list = data.get('ackList', [])
 
             # Update last_seen and alive
             sid_obj = sid_manager_instance.get_sid_object(request.sid)
+            if sid_obj is None:
+                emit('ack_result', {
+                    'result': 'failed',
+                    'reason': 'disconnected'
+                })
+                disconnect()
+
             client_name = sid_obj.client_name
             sid_manager_instance.update_last_seen(request.sid)
             event_queue_instance.update_last_seen(client_name)
@@ -274,7 +309,7 @@ def register_socketio(socketio_instance: SocketIO,
             })
 
     @socketio_instance.on('get')
-    def handle_get(data):
+    def handle_get(data = {}):
         try:
             resource_name = data.get('resource', None)
 
@@ -319,7 +354,7 @@ def register_socketio(socketio_instance: SocketIO,
     @socketio_instance.on('restore_queue')
     def handle_restore_queue(data):
         try:
-            last_fetched_id = data.get('event_id', None)
+            last_fetched_id = data.get('id', None)
             sid_object = sid_manager_instance.get_sid_object(request.sid)
             client_name = None
 

@@ -1,15 +1,18 @@
+import uuid
 import logging
 import datetime
 import threading
-from typing import Dict, List
+from typing import Dict, List, TYPE_CHECKING
 
 import eventlet
 # WARNING: Add eventlet.monkey_patch() in main app
 
-from flask_socketio import SocketIO
-
 import utils.state as state
+from objects.ice_event import ICEEvent
 from objects.sid_object import SIDObject
+
+if TYPE_CHECKING:
+    from utils.event_handler import EventHandler
 
 SID_INVALID_THRESHOLD_SECONDS = 2 # 2 seconds
 SID_DELETE_THRESHOLD_SECONDS = 30 # 30 seconds
@@ -22,10 +25,10 @@ class SIDManager:
     """
     Manages a thread-safe dictionary of SIDs with their last seen timestamps.
     """
-    def __init__(self, socketio_instance: SocketIO):
+    def __init__(self, event_handler_instance: 'EventHandler'):
+        self._eh: 'EventHandler' = event_handler_instance
         self.sid_dict: Dict[str, SIDObject] = {}
         self.untracked_sid_dict: dict = {}
-        self.sio: SocketIO = socketio_instance
         self.lock = threading.Lock()
 
     def add_sid(self, sid: str, client_name: str, client_type: str) -> None:
@@ -132,21 +135,50 @@ class SIDManager:
         """
         Removes inactive SIDs from the dictionary.
         """
-        sids_to_delete = []
+        sids_to_delete: List[SIDObject] = []
         with self.lock:
             time_now = datetime.datetime.now()
             for sid, sid_object in self.sid_dict.items():
                 time_diff = time_now - sid_object.last_seen
                 if time_diff.total_seconds() > SID_DELETE_THRESHOLD_SECONDS:
-                    sids_to_delete.append(sid)
-                elif time_diff.total_seconds() > SID_INVALID_THRESHOLD_SECONDS:
+                    sids_to_delete.append(sid_object)
+                elif time_diff.total_seconds() > SID_INVALID_THRESHOLD_SECONDS and sid_object.is_alive == True:
+                    log.info(f"Marking SID '{sid}' inactive due to inactivity.")
                     self.sid_dict[sid].is_alive = False
-                    ### TODO: Broadcast
 
-            for sid in sids_to_delete:
-                ### TODO: Broadcast
-                del self.sid_dict[sid]
+                    # Broadcast
+                    event = ICEEvent(
+                        event_id=uuid.uuid4(),
+                        event_name='outdated',
+                        event_type='client',
+                        event_source='server',
+                        event_data={
+                            'sid': {
+                                'sid': sid_object.sid,
+                                'clientName': sid_object.client_name
+                            }
+                        }
+                    )
+                    self._eh.broadcast(event)
+
+            for sid_object in sids_to_delete:
                 log.info(f"Removing SID '{sid}' due to inactivity.")
+                del self.sid_dict[sid_object.sid]
+
+                # Broadcast
+                event = ICEEvent(
+                    event_id=uuid.uuid4(),
+                    event_name='disconnected',
+                    event_type='client',
+                    event_source='server',
+                    event_data={
+                        'sid': {
+                            'sid': sid_object.sid,
+                            'clientName': sid_object.client_name
+                        }
+                    }
+                )
+                self._eh.broadcast(event)
 
     def check_old_sids_worker(self):
         """

@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ICE Controller</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            min-height: 100vh;
+            background-color: #000;
+            color: #fff;
+        }
+
+        body.is-armed {
+            background-color: #000;
+        }
+
+        body.is-disarmed {
+            background-color: #0aab0b;
+        }
+
+        .container {
+            display: grid;
+            grid-template-columns: 1.5fr 1fr;
+            height: 100vh;
+            gap: 10px;
+            padding: 10px;
+        }
+
+        .left-column, .right-column {
+            display: grid;
+            gap: 10px;
+        }
+
+        .left-column {
+            grid-template-rows: auto 1fr;
+        }
+
+        .right-column {
+            grid-template-rows: auto auto;
+            align-self: start;
+        }
+
+        .video-section {
+            aspect-ratio: 16/9;
+            position: relative;
+            background-color: #000;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.5);
+            border: 2px solid #444;
+            width: 100%;
+            max-height: calc(100vh - 20px);
+        }
+
+        .video-feed {
+            width: 100%;
+            height: 100%;
+            background-color: #000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            color: #666;
+        }
+
+        .video-overlay {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background-color: rgba(0, 0, 0, 0.6);
+            color: #fff;
+            padding: 15px;
+            text-align: center;
+            font-size: 18px;
+            font-weight: bold;
+            display: none;
+        }
+
+        .control-section {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            padding: 20px;
+            background-color: rgba(34, 34, 34, 0.7);
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+            border: 2px solid #444;
+        }
+
+        .big-button {
+            width: 100%;
+            height: auto;
+            aspect-ratio: 4 / 3;
+            background-color: #ff3333;
+            border: none;
+            border-radius: 12px;
+            color: white;
+            font-size: 10vw;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            transition: box-shadow 0.2s ease, transform 0.2s ease;
+        }
+
+        .big-button:hover {
+            box-shadow: 0 0 20px rgba(255, 51, 51, 0.5);
+        }
+
+        .big-button:active {
+            transform: scale(0.98);
+        }
+
+        .big-button.disabled {
+            background-color: #424242;
+        }
+
+        .big-button.disabled:hover {
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+        }
+
+        .option-list {
+            display: flex;
+            flex-direction: row;
+            justify-content: center;
+            gap: 15px;
+            margin-bottom: 10px;
+            flex-wrap: wrap;
+        }
+
+        .radio-option {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #ccc;
+        }
+
+        .radio-option input[type="radio"] {
+            width: 16px;
+            height: 16px;
+        }
+
+        .radio-option label {
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .link-button {
+            background: none;
+            border: none;
+            color: #66aaff;
+            text-decoration: underline;
+            cursor: pointer;
+            font-size: 14px;
+            padding: 2px 0;
+            transition: color 0.2s ease;
+        }
+
+        .link-button:hover {
+            color: #99ccff;
+        }
+
+        .status-pane {
+            background-color: rgba(34, 34, 34, 0.7);
+            border: 2px solid #444;
+            border-radius: 8px;
+            padding: 15px;
+            color: #ccc;
+        }
+
+        .status-pane h3 {
+            margin-bottom: 10px;
+            font-size: 16px;
+            color: #fff;
+        }
+
+        .status-log {
+            height: calc(100vh - ((100vw - 30px) * 0.6 * 9 / 16) - 30px);;
+            background-color: rgba(34, 34, 34, 0.7);
+            border: 2px solid #444;
+            border-radius: 8px;
+            padding: 15px;
+            color: #ccc;
+            overflow: hidden;
+        }
+
+        .status-log h3 {
+            margin-bottom: 10px;
+            font-size: 16px;
+            color: #fff;
+        }
+
+        .log-container {
+            height: calc(100% - 31px);
+            overflow-y: auto;
+        }
+
+        .log-entry {
+            margin-bottom: 8px;
+            font-size: 13px;
+            font-family: 'Courier New', monospace;
+            padding: 5px;
+            background-color: #333;
+            border-radius: 4px;
+            border-left: 3px solid #0066cc;
+            color: #ccc;
+        }
+
+        .log-entry.event {
+            border-left-color: #ff3333;
+            background-color: #441111;
+            color: #ffcccc;
+        }
+
+        body.flash-red {
+            animation: flash-background 1.5s steps(1) infinite;
+        }
+
+        .video-overlay.flash-red {
+            animation: flash-overlay 1.5s steps(1) infinite;
+        }
+
+        @keyframes flash-background {
+            0%, 50% {
+                background-color: #ff0000;
+            }
+            51%, 100% {
+                background-color: #000;
+            }
+        }
+
+        @keyframes flash-overlay {
+            0%, 50% {
+                background-color: rgba(255, 0, 0, 0.6);
+            }
+            51%, 100% {
+                background-color: rgba(0, 0, 0, 0.6);
+            }
+        }
+
+        @media (orientation: portrait) and (max-width: 600px) {
+            .container {
+                display: grid;
+                grid-template-columns: 1fr;
+                grid-template-rows: auto auto auto 1fr;
+                grid-template-areas:
+                    "video-area"
+                    "control-area"
+                    "status-area"
+                    "log-area";
+                gap: 10px;
+            }
+
+            .left-column {
+                display: contents;
+            }
+
+            .right-column {
+                display: contents;
+            }
+
+            .video-section {
+                grid-area: video-area;
+                overflow: visible;
+            }
+
+            .control-section {
+                grid-area: control-area;
+            }
+
+            .status-pane {
+                grid-area: status-area;
+            }
+
+            .status-log {
+                grid-area: log-area;
+            }
+
+            .big-button {
+                font-size: 20vw;
+            }
+        }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/socket.io@4.8.1/client-dist/socket.io.min.js" integrity="sha256-sOc1gU+Nz+zWzbinzpWil6fh5fJyeinm9ZAYAdUvoMU=" crossorigin="anonymous"></script>
+</head>
+<body>
+    <div class="container">
+        <div class="left-column">
+            <div class="video-section">
+                <div id="videoLoadingMessage" class="video-feed">
+                    📹 Loading Camera Feed...
+                </div>
+                <video id="video" class="video-feed" style="display: none;" autoplay playsinline muted>
+                </video>
+                <div class="video-overlay" id="videoOverlay">
+                    🚨 <span id="videoOverlayMessage"></span> 🚨
+                </div>
+            </div>
+            <div class="status-log">
+                <h3>Event Log</h3>
+                <div class="log-container" id="logContainer">
+                </div>
+            </div>
+        </div>
+
+        <div class="right-column">
+            <div class="control-section">
+                <button id="btnKill" class="big-button" onclick="triggerEvent()">
+                    KILL
+                </button>
+                <div class="option-list">
+                    <div class="radio-option">
+                        <input type="radio" id="killMode1" value="full" checked>
+                        <label for="killMode1">Full</label>
+                    </div>
+                    <div class="radio-option">
+                        <input type="radio" id="killMode2" value="partial">
+                        <label for="killMode2">Partial</label>
+                    </div>
+                    <div class="radio-option">
+                        <input type="radio" id="killMode3" value="swap">
+                        <label for="killMode3">Swap</label>
+                    </div>
+                </div>
+                <div class="option-list">
+                    <button id="btnArm" class="link-button" onclick="arm()">
+                        🚨 Arm ICE
+                    </button>
+                    <button class="link-button" onclick="showSettings()">
+                        ✅ Recover
+                    </button>
+                    <button class="link-button" onclick="toggleFullscreen()">
+                        🖼️ Toggle Fullscreen
+                    </button>
+                </div>
+            </div>
+            <div class="status-pane">
+                <h3>Status</h3>
+                <div>System Status: Online</div>
+                <div>Camera: Connected</div>
+                <div>Detection Mode: Motion</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const wsURL = '';
+        const btnArm = document.getElementById('btnArm');
+        const btnKill = document.getElementById('btnKill');
+        const videoLoadingMessage = document.getElementById('videoLoadingMessage');
+        const videoOverlayElem = document.getElementById('videoOverlay');
+        const videoOverlayMessage = document.getElementById('videoOverlayMessage');
+        let isArmed = false;
+        let isConected = false;
+        let lastFetchedEventID = '';
+        let emitedEventID = [];
+        let connectedClients = {};
+
+        let currentEventName = '';
+        let currentEventTimestamp = new Date(0);
+
+        let clientListPC = [];
+        let clientListHA = [];
+        let clientListHTML = [];
+        let aliveClientListPC = [];
+        let aliveClientListHA = [];
+        let aliveClientListHTML = [];
+
+        const socket = io({
+            transports: ['websocket', 'polling'],
+            upgrade: true,
+            rememberUpgrade: false,
+            timeout: 5000,
+            forceNew: true
+        });
+
+        function handleEvent(eventObj) {
+            // ACK Event
+            let ackList = [];
+            ackList.push(eventObj['id']);
+            socket.emit('ack', {
+                'ackList': ackList
+            });
+
+            if (eventObj['type'] == 'client') {
+                socket.emit('get', {'resource': 'clients'});
+                addLogEntry(`Event: ${eventObj['name']}`, false);
+            } else {
+                addLogEntry(`Event: ${eventObj['name']}`, true);
+                flash(eventObj['name']);
+            }
+        }
+
+        function flash(eventName) {
+            document.body.classList.add('flash-red');
+            videoOverlayElem.classList.add('flash-red')
+
+            setTimeout(() => {
+                document.body.classList.remove('flash-red');
+                videoOverlayElem.classList.remove('flash-red')
+            }, 15000);
+
+            showVideoOverlay(`EVENT: ${eventName.toUpperCase()}`);
+        }
+
+        function triggerEvent() {
+            document.body.classList.remove('flash-red');
+            videoOverlayElem.classList.remove('flash-red');
+
+            document.body.classList.add('flash-red');
+            videoOverlayElem.classList.add('flash-red');
+
+            setTimeout(() => {
+                document.body.classList.remove('flash-red');
+                videoOverlayElem.classList.remove('flash-red');
+            }, 15000);
+
+            showVideoOverlay('hello dello');
+
+            addLogEntry('EVENT DETECTED - Alert triggered!', true);
+        }
+
+        function showVideoOverlay(message) {
+
+            videoOverlayMessage.innerText = message;
+            videoOverlayElem.style.display = 'block';
+
+            setTimeout(() => {
+                videoOverlayElem.style.display = 'none';
+            }, 15000);
+        }
+
+        function addLogEntry(message, isPriority = false) {
+            const logContainer = document.getElementById('logContainer');
+            const timestamp = new Date().toISOString().slice(0, 19).replace('T', ' ');
+
+            const logEntry = document.createElement('div');
+            logEntry.className = isPriority ? 'log-entry event' : 'log-entry';
+            logEntry.textContent = `${timestamp} - ${message}`;
+
+            logContainer.appendChild(logEntry);
+            logContainer.scrollTop = logContainer.scrollHeight;
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen()
+            } else {
+                if (document.exitFullscreen) {
+                document.exitFullscreen()
+                }
+            }
+        }
+
+        function arm() {
+            let endpoint = '';
+
+            if (isArmed) {
+                endpoint = '/api/v1/arm/deactivate';
+            } else {
+                endpoint = '/api/v1/arm/activate';
+            }
+
+            fetch(endpoint, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            })
+            .then((response) => response.json())
+            .then((data) => {
+                isArmed = data['isArmed'];
+                updatePage();
+            });
+        }
+
+        function getICEArmedState() {
+            fetch('/api/v1/arm/status')
+                .then((response) => response.json())
+                .then((data) => {
+                    isArmed = data['isArmed'];
+                    updatePage();
+                });
+        }
+
+        function updatePage() {
+            if (isArmed) {
+                document.body.classList.remove('is-disarmed');
+                document.body.classList.add('is-armed');
+
+                btnArm.innerText = '🔌 Disarm ICE';
+
+                btnKill.classList.remove('disabled');
+            } else {
+                document.body.classList.remove('is-armed');
+                document.body.classList.add('is-disarmed');
+
+                btnArm.innerText = '🚨 Arm ICE';
+
+                btnKill.classList.add('disabled');
+            }
+        }
+
+        function onDisconnect(event, message) {
+            setTimeout(() => {
+                // TODO
+                socket.connect()
+            }, 100)
+        }
+
+        function canShowEvent(eventName) {
+            const currentTimestamp = Date.now();
+            const timeDiff = currentTimestamp - currentEventTimestamp;
+
+            if (eventName == currentEventName) {
+                if (timeDiff > 15 * 1000) {
+                    return true;
+                } else {
+                    return false;
+                }
+            } else {
+                return true;
+            }
+        }
+
+        socket.on('connected', () => {
+            if (lastFetchedEventID != '') {
+                socket.emit('restore_queue', {
+                    'id': lastFetchedEventID
+                });
+            }
+        });
+
+        socket.on('event', (data) => {
+            console.log(data)
+            handleEvent(data);
+        });
+
+        socket.on('pong', (data) => {
+            if (data['result'] == 'success') {
+                isArmed = data['isArmed'];
+                if (data['events'].length > 0) {
+                    console.log(data['events']);
+                    addLogEntry(`Detected a delay in processing event: ${data['events'].length} events in queue`, false)
+                    data['events'].forEach(event => {
+                        handleEvent(event);
+                    });
+                }
+            } else {
+                addLogEntry('Received PONG with error.', true);
+                console.log(data);
+            }
+        });
+
+        socket.on('get_result', (data) => {
+            if (data['result'] == 'success') {
+                clientListPC = data['data']['clientList']['pc'];
+                clientListHA = data['data']['clientList']['ha'];
+                clientListHTML = data['data']['clientList']['html'];
+
+                aliveClientListPC = data['data']['aliveClientList']['pc'];
+                aliveClientListHA = data['data']['aliveClientList']['ha'];
+                aliveClientListHTML = data['data']['aliveClientList']['html'];
+
+                if (aliveClientListPC.length == 0 ||
+                    aliveClientListHA.length == 0 ||
+                    aliveClientListHTML.length == 0) {
+                        addLogEntry(`Zero Client (PC: ${aliveClientListPC.length}, HA: ${aliveClientListHA.length}, HTML: ${aliveClientListHTML.length})`, true)
+                        if (canShowEvent('zero_client')) {
+                            console.log('firing');
+                            currentEventName = 'zero_client';
+                            currentEventTimestamp = Date.now();
+                            flash('Zero Client');
+                        } else {
+                            console.log('ignoring');
+                        }
+                    }
+                updatePage()
+            } else {
+                addLogEntry('Received GET_RESULT with error.', true);
+                console.log(data);
+            }
+        });
+
+        socket.on("connect_error", (error) => {
+            isConected = false;
+            onDisconnect("connect_error", error);
+        });
+
+        socket.on("disconnect", (reason) => {
+            isConected = false;
+            onDisconnect("disconnect", reason);
+        });
+
+        getICEArmedState();
+
+        setInterval(() => {
+            if (socket.connected) {
+                socket.emit('ping');
+            }
+        }, 100);
+
+        setInterval(() => {
+            if (socket.connected) {
+                socket.emit('get', {'resource': 'clients'});
+            }
+        }, 1000);
+
+        setInterval(() => {
+            if (!socket.connected) {
+                console.log('connecting');
+                socket.connect();
+            }
+        });
+    </script>
+</body>
+</html>
