@@ -1,99 +1,152 @@
-import os
 import logging
-import traceback
-import queue
-import threading
-
-# Load log level config
-LOG_LEVEL_ENV = os.getenv('LOG_LEVEL', 'INFO').upper()
-VALID_LOG_LEVELS = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']
-
-if LOG_LEVEL_ENV in VALID_LOG_LEVELS:
-    logging_level = getattr(logging, LOG_LEVEL_ENV)
-else:
-    logging_level = logging.INFO # Default to INFO if environment variable is invalid
-    print(f"[CRITICAL] main - Invalid LOG_LEVEL '{LOG_LEVEL_ENV}' provided. Defaulting to INFO.")
+import asyncio
 
 logging.basicConfig(
     format='%(asctime)s [%(levelname)s] %(name)s - %(message)s',
-    level=logging_level,
+    level=logging.INFO,
     datefmt='%m/%d/%Y %I:%M:%S %p',
 )
+
+import uvicorn
+import socketio
+
+from utils.config import CONFIG
+from utils.states import state
+from utils.event_handler import EventHandler
+from objects.event import Event
+from objects.clients import Clients
+from onvif_.monitor_events import ONVIFMonitor
+
 log = logging.getLogger('main')
 
-import eventlet # Must be imported before Flask/SocketIO if async_mode='eventlet'
-eventlet.monkey_patch() # Patch standard library early
+sio = socketio.AsyncServer(
+    async_mode='asgi',
+    cors_allowed_origins='*')
 
-from flask import Flask
-from flask_socketio import SocketIO
+app = socketio.ASGIApp(sio, static_files={
+    '/': 'app.html',
+})
 
-import socket_events
-import flask_routes
-import utils.state as state
-from utils.config import CONFIG
-from utils.event_handler import EventHandler
-from objects.ice_queue import ICEEventQueue
-from onvif_.monitor_events import ONVIFMonitor
-from onvif_.process_event import ONVIFEventProcessor
+clients = Clients()
+event_handler = EventHandler(sio, clients)
+onvif_monitor = ONVIFMonitor(event_handler)
 
-# Load app
-app = Flask(__name__)
-sio = SocketIO(app,
-               cors_allowed_origins='*',
-               logger=False, # Set to True for SocketIO specific logs
-               engineio_logger=False, # Set to True for EngineIO specific logs
-               async_mode='eventlet', # Use eventlet as async mode
-               transports=['websocket', 'polling'],
-               ping_timeout=2,
-               ping_interval=.1)
-event_queue = ICEEventQueue(None)
-event_handler = EventHandler(sio, event_queue)
-event_queue._eh = event_handler
 
-onvif_queue = queue.Queue()
-onvif_monitor = ONVIFMonitor(onvif_queue)
+@sio.on('connect')
+async def handle_connect(sid, environ):
+    await clients.add_client(sid)
+    log.info(f'Client \'{sid}\' connected.')
 
-# Register all Socket.IO event handlers
-socket_events.register_socketio(sio, event_queue, event_handler)
+@sio.on('disconnect')
+async def handle_disconnect(sid, reason):
+    log.info(f'Client \'{sid}\' disconnected, reason: {str(reason)}')
 
-# Register all HTTP API routes
-flask_routes.register_api_routes(app, sio, event_queue)
+@sio.on('introduce')
+async def handle_introduce(sid, data = {}):
+    log.info(f'Recieved introduce from client \'{sid}\' with data \'{data}\'.')
+    event_id = data.get('id', None)
+    await clients.update_client(sid, data['name'], data['type'], data.get('last_event_id', None))
+    if event_id is not None:
+        clients.restore_events(sid, event_id)
 
-def main():
+@sio.on('event')
+async def handle_event(sid, data = {}):
+    log.info(f'Recieved event from client \'{sid}\' with data \'{data}\'.')
+    event_id = data.get('id', None)
+    event_event = data.get('event', None)
+    event_type = data.get('type', None)
+    event_source = data.get('source', None)
+    event_data = data.get('data', None)
+
+    if event_id is None or event_event is None or event_type is None or event_source is None:
+        await sio.emit('event_result', {
+            'id': event_id,
+            'result': 'failed',
+            'reason': 'invalid_scheme'
+        }, to=sid)
+        return
+
+    event = Event(event_id, event_event, event_type, event_source, event_data)
+    result, broadcast_type = await event_handler.broadcast(event)
+
+    payload = {
+        'id': event_id,
+        'result': result
+    }
+
+    if result != 'success':
+        payload['reason'] = broadcast_type
+
+    await sio.emit('event_result', payload, to=sid)
+
+@sio.on('set_armed')
+async def handle_set_armed(sid, data = {}):
+    log.info(f'Recieved set_armed from client \'{sid}\' with data \'{data}\'.')
+    state.set_armed(data.get('armed', False))
+
+@sio.on('get')
+async def handle_get(sid, data = {}):
+    log.debug(f'Recieved get from client \'{sid}\' with data \'{data}\'.')
+    payload = {
+        'isArmed': state.is_armed(),
+        'clientList': await clients.get_client_list(True),
+        'eventList': await clients.get_event_list(sid, True)
+    }
+    await sio.emit('get_result', payload)
+
+@sio.on('ack')
+async def handle_ack(sid, data = {}):
+    log.debug(f'Recieved ack from client \'{sid}\' with data \'{data}\'.')
+    event_id = data.get('id', None)
+    await clients.ack_event(sid, event_id)
+    await clients.update_last_seen(sid)
+
+@sio.on('pong')
+async def handle_pong(sid, data = {}):
+    log.debug(f'Recieved pong from client \'{sid}\' with data \'{data}\'.')
+    await clients.update_last_seen(sid)
+
+async def ping_worker():
+    while state.is_server_up():
+        await sio.emit('ping')
+        await asyncio.sleep(.1)
+
+async def client_worker():
+    while state.is_server_up():
+        deleted_client_sids = await clients.clean_client()
+        for sid in deleted_client_sids:
+            await sio.disconnect(sid)
+        await asyncio.sleep(.1)
+
+async def event_worker():
+    while state.is_server_up():
+        await clients.clean_event()
+        await asyncio.sleep(.1)
+
+async def main():
     try:
-        # Start ONVIF worker
-        onvif_thread = threading.Thread(
-            target=onvif_monitor.onvif_event_monitoring_worker,
-            daemon=True)
-        onvif_thread.start()
-        onvif_event_processor = ONVIFEventProcessor(onvif_queue, event_handler)
+        log.info(f'Starting background workers...')
+        asyncio.create_task(ping_worker())
+        asyncio.create_task(client_worker())
+        asyncio.create_task(event_worker())
+        if CONFIG.onvif_enabled:
+            asyncio.create_task(onvif_monitor.onvif_event_monitoring_worker())
 
-        # Start background worker greenlets
-        worker_pool = eventlet.GreenPool()
-        check_old_clients_and_events_greenlet = worker_pool.spawn(event_queue.check_old_clients_and_events_worker)
-        process_onvif_event_greenlet = worker_pool.spawn(onvif_event_processor.monitor_onvif_event_queue)
-
-        log.info("Starting main server...")
-        log.info(f"Listening on \'{CONFIG.host}:{CONFIG.port}\'...")
-        sio.run(app,
-                host=CONFIG.host,
-                port=CONFIG.port,
-                debug=False,
-                use_reloader=False)
-
-    except KeyboardInterrupt:
-        log.info('Shutting down... (reason: user interrupt)')
+        log.info(f'Listening at http://{CONFIG.host}:{CONFIG.port}...')
+        uvicorn_config = uvicorn.Config(app,
+                                        host=CONFIG.host,
+                                        port=CONFIG.port,
+                                        log_config='./utils/uvicorn_log_config.yaml')
+        uvicorn_server = uvicorn.Server(uvicorn_config)
+        await uvicorn_server.serve()
+    except [KeyboardInterrupt, asyncio.exceptions.CancelledError]:
+        pass
     except Exception as e:
-        log.error(f'An unexpected error occurred: {e}')
-        traceback.print_exc() # Print full traceback
+        log.error(f'Unexpected error occured: {e}')
     finally:
-        log.info("Signaling workers to stop...")
-        state.is_server_up = False # Signal workers to stop gracefully
-        # Give workers a moment to finish their current loop iteration
-        eventlet.sleep(0.5)
-        # You might want to join the greenlets if they have critical cleanup,
-        # but for daemon-like workers, setting the flag is often enough.
-        log.info("Server cleanup complete. Application terminated.")
+        log.info('Shutting down...')
+        state.set_server_up(False)
+        await asyncio.sleep(1)
 
 if __name__ == '__main__':
-    main()
+    asyncio.run(main())

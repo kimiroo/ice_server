@@ -1,13 +1,10 @@
 from __future__ import annotations
 
 import os
+import uuid
 import asyncio
 import datetime
 import logging
-import queue
-import traceback
-
-from flask_socketio import SocketIO
 
 import onvif
 from onvif import ONVIFCamera
@@ -16,7 +13,9 @@ from onvif.util import stringify_onvif_error
 from zeep.exceptions import Fault, TransportError, XMLParseError
 from zeep.exceptions import ValidationError # Ensure this is imported for CREATE_ERRORS
 
-import utils.state as state
+from objects.event import Event
+from utils.event_handler import EventHandler
+from utils.states import state
 from utils.config import CONFIG
 from onvif_.event_parser import parse_event_message
 
@@ -44,8 +43,8 @@ TOPIC_FILTER = [
 ]
 
 class ONVIFMonitor:
-    def __init__(self, queue: queue.Queue):
-        self._queue = queue
+    def __init__(self, event_handler_instance: EventHandler):
+        self._evh: EventHandler = event_handler_instance
 
     async def monitor_onvif_events(self,
                                    onvif_ip: str,
@@ -90,7 +89,7 @@ class ONVIFMonitor:
                 """Continuously pull messages from the device."""
                 while True:
                     # Monitors server up status
-                    if not state.is_server_up:
+                    if not state.is_server_up():
                         log.info(f'Received server shutting down. Exitting ONVIF monitoring loop...')
                         pull_messages_task.cancel()
                         breakpoint
@@ -116,7 +115,6 @@ class ONVIFMonitor:
                             f'Failed to fetch PullPoint subscription messages (Fault): {stringify_onvif_error(err)}. '
                             'Attempting to re-establish subscription.'
                         )
-                        traceback.print_exc()
                         pullpoint_manager.resume()
                     except (
                         XMLParseError,
@@ -141,7 +139,19 @@ class ONVIFMonitor:
                                     event = await parse_event_message(msg)
                                     if event:
                                         log.debug(f'Received ONVIF Event: {event}')
-                                        self._queue.put(event)
+                                        if event.value != True:
+                                            # Ignore disarm events
+                                            continue
+
+                                        ice_event = Event(
+                                            event_id=str(uuid.uuid4()),
+                                            event_event=event.event_name,
+                                            event_type='onvif',
+                                            event_source='server'
+                                        )
+
+                                        await self._evh.broadcast(ice_event)
+
                                     else:
                                         log.debug(f'Parser returned no event for message: {msg}')
                             except Exception as e:
@@ -186,16 +196,16 @@ class ONVIFMonitor:
 
             log.info('ONVIF event monitoring stopped.')
 
-    def onvif_event_monitoring_worker(self):
+    async def onvif_event_monitoring_worker(self):
 
-        while state.is_server_up:
+        while state.is_server_up():
             try:
-                asyncio.run(self.monitor_onvif_events(
+                await self.monitor_onvif_events(
                     CONFIG.onvif_host,
                     CONFIG.onvif_port,
                     CONFIG.onvif_username,
                     CONFIG.onvif_password
-                ))
+                )
             except asyncio.CancelledError:
                 log.info('ONVIF event monitoring worker was cancelled.')
                 break

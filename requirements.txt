@@ -1,5 +1,4 @@
-requests
-eventlet
-flask
-flask-socketio
+aiohttp
+uvicorn[standard]
+python-socketio
 onvif-zeep-async
