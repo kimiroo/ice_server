@@ -1,0 +1,25 @@
+{
+    "host": "0.0.0.0",
+    "port": 8080,
+    "onvif": {
+        "host": "10.0.0.100",
+        "port": 2020,
+        "username": "user",
+        "password": "password"
+    },
+    "webhook": {
+        "url": "http://some.url/some/path",
+        "method": "POST",
+        "data": {
+            "id": "$event_id",
+            "name": "name: $event_name",
+            "type": "type: $event_type",
+            "source": "$event_source",
+            "data": "$event_data",
+            "timestamp": "timestamp: $event_timestamp"
+        },
+        "headers": {
+            "Priority": "5"
+        }
+    }
+}

@@ -4,7 +4,7 @@ import asyncio
 logging.basicConfig(
     format='%(asctime)s [%(levelname)s] %(name)s - %(message)s',
     level=logging.INFO,
-    datefmt='%m/%d/%Y %I:%M:%S %p',
+    datefmt='%Y-%m-%d %H:%M:%S',
 )
 
 import uvicorn
@@ -136,7 +136,8 @@ async def main():
         uvicorn_config = uvicorn.Config(app,
                                         host=CONFIG.host,
                                         port=CONFIG.port,
-                                        log_config='./utils/uvicorn_log_config.yaml')
+                                        log_config=None,
+                                        log_level=None)
         uvicorn_server = uvicorn.Server(uvicorn_config)
         await uvicorn_server.serve()
     except [KeyboardInterrupt, asyncio.exceptions.CancelledError]:
