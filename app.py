@@ -1,5 +1,4 @@
 import logging
-import asyncio
 
 logging.basicConfig(
     format='%(asctime)s [%(levelname)s] %(name)s - %(message)s',
@@ -7,13 +6,18 @@ logging.basicConfig(
     datefmt='%Y-%m-%d %H:%M:%S',
 )
 
+import uuid
+import asyncio
 import uvicorn
 import socketio
+from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 
 from utils.config import CONFIG
 from utils.states import state
 from utils.event_handler import EventHandler
 from objects.event import Event
+from objects.client import Client
 from objects.clients import Clients
 from onvif_.monitor_events import ONVIFMonitor
 
@@ -23,9 +27,9 @@ sio = socketio.AsyncServer(
     async_mode='asgi',
     cors_allowed_origins='*')
 
-app = socketio.ASGIApp(sio, static_files={
-    '/': 'app.html',
-})
+app = FastAPI()
+app.mount('/socket.io', socketio.ASGIApp(sio, other_asgi_app=app))
+app.mount('/', StaticFiles(directory='static', html=True), name='static')
 
 clients = Clients()
 event_handler = EventHandler(sio, clients)
@@ -40,14 +44,34 @@ async def handle_connect(sid, environ):
 @sio.on('disconnect')
 async def handle_disconnect(sid, reason):
     log.info(f'Client \'{sid}\' disconnected, reason: {str(reason)}')
+    client: Client = await clients.get_client(sid)
+    event = Event(
+        event_id=uuid.uuid4(),
+        event_event='disconnected',
+        event_type='client',
+        event_source='server',
+        event_data={'client': client.to_dict(json_friendly=True)}
+    )
+    await event_handler.broadcast(event)
+    await clients.remove_client(sid)
 
 @sio.on('introduce')
 async def handle_introduce(sid, data = {}):
     log.info(f'Recieved introduce from client \'{sid}\' with data \'{data}\'.')
-    event_id = data.get('id', None)
-    await clients.update_client(sid, data['name'], data['type'], data.get('last_event_id', None))
-    if event_id is not None:
-        clients.restore_events(sid, event_id)
+    client_name = data.get('name', None)
+    client_type = data.get('type', None)
+    last_event_id = data.get('lastEventID', None)
+
+    await clients.update_client(sid, client_name, client_type, last_event_id)
+    client: Client = await clients.get_client(sid)
+    event = Event(
+        event_id=uuid.uuid4(),
+        event_event='connected',
+        event_type='client',
+        event_source='server',
+        event_data={'client': client.to_dict(json_friendly=True)}
+    )
+    await event_handler.broadcast(event)
 
 @sio.on('event')
 async def handle_event(sid, data = {}):

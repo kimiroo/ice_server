@@ -42,7 +42,12 @@ class Clients:
                             new_event_list.append(event)
                         else:
                             break
-                    client.restore_events(new_event_list[::-1])
+                    client.restore_events(new_event_list)
+
+    async def get_client(self, sid: str) -> None:
+        async with self._lock:
+            if sid in self._clients:
+                return self._clients[sid]
 
     async def update_last_seen(self, sid: str) -> None:
         async with self._lock:
@@ -100,19 +105,6 @@ class Clients:
                     self._events.remove(event)
                     for client in self._clients.values():
                         client.ack_event(str(event.id))
-
-    async def restore_events(self, sid: str, event_id: str) -> None:
-        async with self._lock:
-            if sid in self._clients:
-                client = self._clients[sid]
-                new_event_list = []
-
-                for event in reversed(self._events):
-                    if str(event.id) != event_id:
-                        new_event_list.append(event)
-                    else:
-                        break
-                client.restore_events(new_event_list[::-1])
 
     async def is_previous_event_valid(self, event_event: str) -> bool:
         async with self._lock:

@@ -1,4 +1,5 @@
 aiohttp
+fastapi
 uvicorn[standard]
 python-socketio
 onvif-zeep-async

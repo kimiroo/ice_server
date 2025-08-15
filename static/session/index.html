@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ICE Controller</title>
+    <link rel="stylesheet" href="/static/css/session.css">
+    <script src="https://cdn.jsdelivr.net/npm/socket.io@4.8.1/client-dist/socket.io.min.js" integrity="sha256-sOc1gU+Nz+zWzbinzpWil6fh5fJyeinm9ZAYAdUvoMU=" crossorigin="anonymous"></script>
+    <script src="/static/js/session.js"></script>
+</head>
+<body>
+    <div class="container">
+        <div class="left-column">
+            <div class="video-section">
+                <div id="videoLoadingMessage" class="video-feed">
+                    📹 Loading Camera Feed...
+                </div>
+                <video id="video" class="video-feed" style="display: none;" autoplay playsinline muted>
+                </video>
+                <div class="video-overlay" id="videoOverlay">
+                    🚨 <span id="videoOverlayMessage"></span> 🚨
+                </div>
+            </div>
+            <div class="status-log">
+                <h3>Event Log</h3>
+                <div class="log-container" id="logContainer">
+                </div>
+            </div>
+        </div>
+
+        <div class="right-column">
+            <div class="control-section">
+                <button id="btnKill" class="big-button">
+                    KILL
+                </button>
+                <div class="option-list">
+                    <div class="radio-option">
+                        <input type="radio" id="killMode1" name="killMode" value="full" checked>
+                        <label for="killMode1">Full</label>
+                    </div>
+                    <div class="radio-option">
+                        <input type="radio" id="killMode2" name="killMode" value="partial">
+                        <label for="killMode2">Partial</label>
+                    </div>
+                    <div class="radio-option">
+                        <input type="radio" id="killMode3" name="killMode" value="swap">
+                        <label for="killMode3">Swap</label>
+                    </div>
+                </div>
+                <div class="option-list">
+                    <button id="btnArm" class="link-button">
+                        🚨 Arm ICE
+                    </button>
+                    <button id="btnRecover" class="link-button">
+                        ✅ Recover
+                    </button>
+                    <button id="btnToggleFullscreen" class="link-button">
+                        🖼️ Toggle Fullscreen
+                    </button>
+                </div>
+            </div>
+            <div class="status-pane">
+                <h3>Status</h3>
+                <div>Connected: <b><span id="statusConnected">False</span></b></div>
+                <div>ICE Armed: <b><span id="statusArmed">N/A</span></b></div>
+                <div>Client Name: <b><span id="statusClientName">N/A</span></b></div><br>
+                <div>HTML Client Count: <b><span id="statusCountHTML">N/A</span></b></div>
+                <div>HA Client Count: <b><span id="statusCountHA">N/A</span></b></div>
+                <div>PC Client Count: <b><span id="statusCountPC">N/A</span></b></div><br>
+                <div>
+                    HTML Clients:
+                    <ul id="statusClientListHTML"></ul>
+                </div>
+                <div>
+                    HA Clients:
+                    <ul id="statusClientListHA"></ul>
+                </div>
+                <div>
+                    PC Clients:
+                    <ul id="statusClientListPC"></ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
