@@ -30,9 +30,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const statusCountHTML = document.getElementById('statusCountHTML');
     const statusCountHA = document.getElementById('statusCountHA');
     const statusCountPC = document.getElementById('statusCountPC');
-    const statusClientListHTML = document.getElementById('statusClientListHTML');
-    const statusClientListHA = document.getElementById('statusClientListHA');
-    const statusClientListPC = document.getElementById('statusClientListPC');
 
     let isArmed = false;
     let isConected = false;
