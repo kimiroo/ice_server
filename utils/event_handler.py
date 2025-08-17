@@ -99,7 +99,12 @@ class EventHandler:
         await self._sio.emit(broadcast_type, payload)
 
         # Call webhook if enabled
-        if CONFIG.webhook_enabled and broadcast_type == 'event':
+        if CONFIG.webhook_enabled and (broadcast_type == 'event' or CONFIG.webhook_on_ignored):
+            if len(CONFIG.webhook_on_event_type) > 0 and event.type not in CONFIG.webhook_on_event_type:
+                return result, broadcast_type
+            if len(CONFIG.webhook_on_event_source) > 0 and event.source not in CONFIG.webhook_on_event_source:
+                return result, broadcast_type
+
             asyncio.create_task(self.call_webhook(event))
 
         return result, broadcast_type

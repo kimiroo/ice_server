@@ -1,6 +1,6 @@
 import json
 import logging
-from typing import Union
+from typing import List, Union
 
 CONFIG_PATH = 'config.json'
 CONFIG = None
@@ -18,11 +18,17 @@ class Config:
         self.onvif_username: str = None
         self.onvif_password: str = None
 
+        self.go2rtc_host: str = None
+        self.go2rtc_src: str = None
+
         self.webhook_enabled: bool = False
         self.webhook_url: str = None
         self.webhook_method: str = None
         self.webhook_data: Union[str, dict] = None
         self.webhook_headers: dict = None
+        self.webhook_on_ignored: bool = False
+        self.webhook_on_event_type: List[str] = []
+        self.webhook_on_event_source: List[str] = []
 
         config_data = {}
 
@@ -51,12 +57,20 @@ class Config:
             else:
                 self.onvif_enabled = False
 
+            # Load go2rtc Stream Config
+            go2rtc_conf = config_data.get('go2rtc', {})
+            self.go2rtc_host = go2rtc_conf.get('host', None)
+            self.go2rtc_src = go2rtc_conf.get('src', None)
+
             # Load Webhook Config
             webhook_conf = config_data.get('webhook', {})
             self.webhook_url = webhook_conf.get('url', None)
             self.webhook_method = webhook_conf.get('method', 'GET')
             self.webhook_data = webhook_conf.get('data', None)
             self.webhook_headers = webhook_conf.get('headers', None)
+            self.webhook_on_ignored = webhook_conf.get('onIgnored', False)
+            self.webhook_on_event_type = webhook_conf.get('onEventType', [])
+            self.webhook_on_event_source = webhook_conf.get('onEventSource', [])
 
             if isinstance(self.webhook_url, str) and self.webhook_url != '':
                 self.webhook_enabled = True

@@ -11,13 +11,9 @@ if (!clientName) {
 
 document.addEventListener('DOMContentLoaded', () => {
 
-    // Constants
-    const eventTypesToFilter = [
-        'onvif'
-    ];
-
     // Elements
     const btnKill = document.getElementById('btnKill');
+    const btnIgnore = document.getElementById('btnIgnore');
     const btnArm = document.getElementById('btnArm');
     const btnRecover = document.getElementById('btnRecover');
     const btnToggleFullscreen = document.getElementById('btnToggleFullscreen');
@@ -28,6 +24,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const videoOverlayMessage = document.getElementById('videoOverlayMessage');
 
     const statusConnected = document.getElementById('statusConnected');
+    const statusCamera = document.getElementById('statusCamera');
     const statusArmed = document.getElementById('statusArmed');
     const statusClientName = document.getElementById('statusClientName');
     const statusCountHTML = document.getElementById('statusCountHTML');
@@ -40,13 +37,12 @@ document.addEventListener('DOMContentLoaded', () => {
     let isArmed = false;
     let isConected = false;
     let heartbeatTimestamp = new Date(0);
+    let cameraState = null;
 
     let lastEventID = null;
     let emitedEventList = [];
     let receivedEventList = [];
-
-    let currentEventName = '';
-    let currentEventTimestamp = new Date(0);
+    let flashEventSource = null;
 
     let clientListPC = [];
     let clientListHA = [];
@@ -60,12 +56,35 @@ document.addEventListener('DOMContentLoaded', () => {
         forceNew: true
     });
 
-    function clearOldEvents(eventList) {
-        const timeNow = new Date();
-        return eventList.filter(event => {
-            const timeDiff = timeNow.getTime() - event['timestamp'].getTime();
-            return timeDiff < 15 * 1000;
-        });
+    function capitalizeFirstLetter(str) {
+    if (str.length === 0) {
+        return ""; // Handle empty strings
+    }
+    return str.charAt(0).toUpperCase() + str.slice(1);
+    }
+
+    function isPreviousEventValid(eventType, eventName = null) {
+        for (const event of receivedEventList) {
+            const timeNow = new Date();
+            const timeEvent = new Date(event['timestamp']);
+            const timeDiff = timeNow.getTime() - timeEvent.getTime();
+
+            if (timeDiff < 15 * 1000 && event['type'] === eventType) {
+                if (eventName === null || event['event'] === eventName) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    function isEmitedEvent(eventID) {
+        for (const event of emitedEventList) {
+            if (event['id'] === eventID) {
+                return true;
+            }
+        }
+        return false;
     }
 
     function handleEvent(eventObj, isIgnored) {
@@ -78,46 +97,107 @@ document.addEventListener('DOMContentLoaded', () => {
 
         lastEventID = eventObj['id'];
 
-        //
+        if (isIgnored) {
+            if (eventObj['type'] === 'onvif') {
+                addLogEntry(`IGNORED_ONVIF: ${capitalizeFirstLetter(eventObj['event'])} ignored.`);
+            } else if (eventObj['type'] === 'user') {
+                if (eventObj['event'] === 'kill') {
+                    addLogEntry(`IGNORED_USER: User broadcasted event '${eventObj['event'].toUpperCase()}' with mode '${eventObj['data']['killMode'].toUpperCase()}' ignored.`);
+                } else {
+                    addLogEntry(`IGNORED_USER: User broadcasted event '${eventObj['event'].toUpperCase()}'.`);
+                }
+            } else if (eventObj['type'] === 'client') {
+                addLogEntry(`IGNORED_CLIENT: Client '${eventObj['data']['client']['name']}' ${eventObj['event']}.`)
+            }
+        } else {
+            if (eventObj['type'] === 'onvif' && !isPreviousEventValid('onvif')) {
+                receivedEventList.push(eventObj);
+                addLogEntry(`ONVIF: ${capitalizeFirstLetter(eventObj['event'])} Detected!`, true);
+                flash(`${eventObj['type']}_${eventObj['event']}`);
+                showVideoOverlay(`${eventObj['event'].toUpperCase()} DETECTED!`);
 
+            } else if (eventObj['type'] === 'user' && !isEmitedEvent(eventObj['id'])) {
+                receivedEventList.push(eventObj);
+                if (eventObj['event'] === 'kill') {
+                    addLogEntry(`USER: User broadcasted event '${eventObj['event'].toUpperCase()}' with mode '${eventObj['data']['killMode'].toUpperCase()}'.`, true);
+                } else {
+                    addLogEntry(`USER: User broadcasted event '${eventObj['event'].toUpperCase()}'.`, true);
+                }
 
-        receivedEventList.push(eventObj);
-
-        addLogEntry(`Event: ${eventObj['event']}`, true);
-        flash(eventObj['event']);
+            } else if (eventObj['type'] === 'client') {
+                receivedEventList.push(eventObj);
+                if (eventObj['event'] === 'connected') {
+                    addLogEntry(`CLIENT: Client '${eventObj['data']['client']['name']}' ${eventObj['event']}.`);
+                } else {
+                    addLogEntry(`CLIENT: Client '${eventObj['data']['client']['name']}' ${eventObj['event']}.`, true);
+                    flash(`${eventObj['type']}_${eventObj['event']}`);
+                    showVideoOverlay(`CLIENT '${eventObj['data']['client']['name']}' DISCONNECTED!`);
+                }
+            }
+        }
     }
 
-    function handleInternalEvent(eventObj, isIgnored) {
-        //
+    function handleInternalEvent(eventObj) {
+        if (!isPreviousEventValid(eventObj['type'], eventObj['event'])) {
+            receivedEventList.push(eventObj);
+            if (eventObj['event'] === 'zero_client') {
+                addLogEntry(`CLIENT: Zero client detected: PC: ${clientListPC.length}, HA: ${clientListHA.length}, HTML: ${clientListHTML.length}`, true);
+                showVideoOverlay(`ZERO CLIENT DETECTED!`);
+            } else if (eventObj['event'] === 'disconnected') {
+                addLogEntry(`CONNECTION: Connection to server lost.`, true);
+                showVideoOverlay(`CONNECTION LOST!`);
+            }
+            flash(`${eventObj['type']}_${eventObj['event']}`);
+        }
+    }
+
+    function onCameraStateChanged(state) {
+        console.log('Camera state changed:', state);
+        statusCamera.innerText = state;
+        if (state === 'connected') {
+            videoElem.style.display = 'block';
+            videoLoadingMessage.style.display = 'none';
+        } else {
+            if (state === 'disconnected' || state === 'failed') {
+                videoLoadingMessage.innerText = '📹 Camera Feed Disconnected. Retrying...';
+            }
+            videoElem.style.display = 'none';
+            videoLoadingMessage.style.display = 'block';
+        }
     }
 
     function flash(eventName) {
         document.body.classList.add('flash-red');
-        videoOverlayElem.classList.add('flash-red')
+        videoOverlayElem.classList.add('flash-red');
+        flashEventSource = eventName;
 
         setTimeout(() => {
             removeFlash()
         }, 15000);
-
-        showVideoOverlay(`EVENT: ${eventName.toUpperCase()}`);
     }
 
     function removeFlash() {
         document.body.classList.remove('flash-red');
-        videoOverlayElem.classList.remove('flash-red')
+        videoOverlayElem.classList.remove('flash-red');
+        flashEventSource = null;
     }
 
-    function triggerEvent(eventName) {
+    function triggerEvent(eventName, isKill) {
+        if (!isArmed) {
+            alert('ICE isn\'t armed.');
+            return;
+        }
         const selectedKillMode = document.querySelector('input[name="killMode"]:checked').value;
-        const eventID = crypto.randomUUID();
-        const payload = {
+        const eventID = generateUUID();
+        let payload = {
             'id': eventID,
             'event': eventName,
             'type': 'user',
             'source': 'html',
-            'data': {
-                'killMode': selectedKillMode
-            }
+            'data': {}
+        }
+        if (isKill) {
+            payload['data']['killMode'] = selectedKillMode;
         }
         socket.emit('event', payload);
         emitedEventList.push({
@@ -140,7 +220,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function addLogEntry(message, isPriority = false) {
         const logContainer = document.getElementById('logContainer');
-        const timestamp = new Date().toISOString().slice(0, 19).replace('T', ' ');
+
+        // Create a new Date object representing the current moment.
+        const date = new Date();
+
+        // Get year, month, day, hours, minutes, and seconds from the date object.
+        // The methods used (e.g., getFullYear()) automatically return values based on the local timezone.
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0'); // Month is zero-indexed, so add 1.
+        const day = String(date.getDate()).padStart(2, '0');
+        const hours = String(date.getHours()).padStart(2, '0');
+        const minutes = String(date.getMinutes()).padStart(2, '0');
+        const seconds = String(date.getSeconds()).padStart(2, '0');
+
+        // Combine the parts into the desired format and return the string.
+        const timestamp = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
 
         const logEntry = document.createElement('div');
         logEntry.className = isPriority ? 'log-entry event' : 'log-entry';
@@ -159,25 +253,27 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function updatePage() {
-        // Common elements
-        updateElement(statusConnected, isConected ? 'True' : 'False');
-        updateElement(statusCountHTML, clientListHTML.length);
-        updateElement(statusCountHA, clientListHA.length);
-        updateElement(statusCountPC, clientListPC.length);
 
-        function updateClientList(clientList, element) {
+        function createClientList(clientList) {
             let newContent = '';
             clientList.forEach(client => {
-                newContent += `<li><b>${client['name']}</b></li>`;
-            });
-            if (newContent == '') {
-                newContent = '<li><b>🚨 None</b></li>';
+                if (newContent === '') {
+                    newContent += `${client['name']}`;
+                } else {
+                    newContent += `, ${client['name']}`
+                }
+            })
+            if (newContent === '') {
+                newContent = '🚨None🚨';
             }
-            updateElement(element, newContent, true);
+            return `( ${newContent} )`
         }
-        updateClientList(clientListHTML, statusClientListHTML);
-        updateClientList(clientListHA, statusClientListHA);
-        updateClientList(clientListPC, statusClientListPC);
+
+        // Common elements
+        updateElement(statusConnected, isConected ? 'True' : 'False');
+        updateElement(statusCountHTML, `<b>${clientListHTML.length}</b>&nbsp; ${createClientList(clientListHTML)}`, true);
+        updateElement(statusCountHA, `<b>${clientListHA.length}</b>&nbsp; ${createClientList(clientListHA)}`, true);
+        updateElement(statusCountPC, `<b>${clientListPC.length}</b>&nbsp; ${createClientList(clientListPC)}`, true);
 
         if (isArmed) {
             if (document.body.classList.contains('is-disarmed') ||
@@ -186,8 +282,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 document.body.classList.add('is-armed');
             }
 
-            if (btnKill.classList.contains('disabled')) {
+            if (btnKill.classList.contains('disabled') || btnIgnore.classList.contains('disabled')) {
                 btnKill.classList.remove('disabled');
+                btnIgnore.classList.remove('disabled');
             }
 
             updateElement(statusArmed, 'True');
@@ -199,8 +296,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 document.body.classList.add('is-disarmed');
             }
 
-            if (!btnKill.classList.contains('disabled')) {
+            if (!btnKill.classList.contains('disabled') || !btnIgnore.classList.contains('disabled')) {
                 btnKill.classList.add('disabled');
+                btnIgnore.classList.add('disabled');
             }
 
             updateElement(statusArmed, 'False');
@@ -213,33 +311,46 @@ document.addEventListener('DOMContentLoaded', () => {
         isConected = timeDiff < 1000 && socket.connected; // 1 second
 
         if (!isConected) {
-            // TODO: emit internal event
+            const timeNow = new Date();
+            internalEvent = {
+                'event': 'disconnected',
+                'type': 'connection',
+                'source': 'self',
+                'timestamp': timeNow.toISOString()
+            }
+            handleInternalEvent(internalEvent);
             updatePage();
         } else {
-            // TODO: remove?
+            if (flashEventSource === 'connection_disconnected') {
+                removeFlash();
+            }
         }
     }
 
     function onDisconnect(event, message) {
         isConected = false;
         updatePage();
-        // TODO
-        // TODO: emit internal event
+        console.log(event)
+        console.log(message)
+
+        const timeNow = new Date();
+        internalEvent = {
+            'event': 'disconnected',
+            'type': 'connection',
+            'source': 'self',
+            'timestamp': timeNow.toISOString()
+        }
+        handleInternalEvent(internalEvent);
     }
 
-    function canShowEvent(eventName) {
-        const currentTimestamp = Date.now();
-        const timeDiff = currentTimestamp - currentEventTimestamp;
-
-        if (eventName == currentEventName) {
-            if (timeDiff > 15 * 1000) {
-                return true;
-            } else {
-                return false;
-            }
-        } else {
-            return true;
-        }
+    function generateUUID() {
+        let d = new Date().getTime();
+        let uuid = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+            let r = (d + Math.random() * 16) % 16 | 0;
+            d = Math.floor(d / 16);
+            return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+        });
+        return uuid;
     }
 
     socket.on('connect', () => {
@@ -254,11 +365,11 @@ document.addEventListener('DOMContentLoaded', () => {
     })
 
     socket.on('event', (data) => {
-        handleEvent(data['event'], isIgnored=false);
+        handleEvent(data['event'], false);
     });
 
     socket.on('event_ignored', (data) => {
-        handleEvent(data['event'], isIgnored=true);
+        handleEvent(data['event'], true);
     });
 
     socket.on('ping', (data) => {
@@ -291,7 +402,7 @@ document.addEventListener('DOMContentLoaded', () => {
             addLogEntry(`Detected a delay in processing event: ${eventList.length} events in queue`, false)
 
             eventList.forEach(event => {
-                handleEvent(event, isIgnored=false);
+                handleEvent(event, false);
             });
         }
 
@@ -302,13 +413,23 @@ document.addEventListener('DOMContentLoaded', () => {
         updateHeartbeat();
 
         // Connected client count check
-        if (clientListPC.length == 0 ||
-            clientListHA.length == 0 ||
-            clientListHTML.length == 0) {
-            // canShowEvent('zero_client')
-            // TODO: emit internal event
+        if (isArmed &&
+            (clientListPC.length === 0 ||
+            clientListHA.length === 0 ||
+            clientListHTML.length === 0)) {
+
+            const timeNow = new Date();
+            internalEvent = {
+                'event': 'zero_client',
+                'type': 'client',
+                'source': 'self',
+                'timestamp': timeNow.toISOString()
+            }
+            handleInternalEvent(internalEvent);
         } else {
-            // Remove flash?
+            if (flashEventSource === 'client_zero_client') {
+                removeFlash();
+            }
         }
 
         updatePage();
@@ -323,7 +444,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     btnKill.addEventListener('click', () => {
-        triggerEvent('kill');
+        triggerEvent('kill', true);
     });
 
     btnArm.addEventListener('click', () => {
@@ -331,7 +452,11 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     btnRecover.addEventListener('click', () => {
-        triggerEvent('recover');
+        triggerEvent('recover', false);
+    });
+
+    btnIgnore.addEventListener('click', () => {
+        triggerEvent('ignore', false);
     });
 
     btnToggleFullscreen.addEventListener('click', () => {
@@ -399,17 +524,18 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function connect(media) {
-        //const baseUrl = 'ws://10.5.47.10:1984/';
-        //const pc = await PeerConnection(media);
-        //const url = new URL('api/ws' + location.search, baseUrl);
-        //console.log(url);
-        //console.log(url.toString().substring(4));
-        //const ws = new WebSocket('ws' + url.toString().substring(4));
+        const response = await fetch('/api/v1/go2rtc-config');
+        if (!response.ok) {
+            // Internal Notify
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const data = await response.json();
+
+        const wsScheme = window.location.protocol === 'https:' ? 'wss' : 'ws';
+        const wsURL = `${wsScheme}://${data.host}/api/ws?src=${data.src}&mode=webrtc`;
 
         const pc = await PeerConnection(media);
-        //const go2rtcServerUrl = 'wss://ice.darak.cc'; // CHANGE THIS TO YOUR GO2RTC SERVER
-        const go2rtcServerUrl = 'ws://10.5.47.10:1984'; // CHANGE THIS TO YOUR GO2RTC SERVER
-        const ws = new WebSocket(`${go2rtcServerUrl}/api/ws?src=tapo_c100&mode=webrtc`);
+        const ws = new WebSocket(wsURL);
 
         ws.addEventListener('open', () => {
             pc.addEventListener('icecandidate', ev => {
@@ -431,6 +557,20 @@ document.addEventListener('DOMContentLoaded', () => {
             } else if (msg.type === 'webrtc/answer') {
                 pc.setRemoteDescription({type: 'answer', sdp: msg.value});
             }
+        });
+
+        pc.addEventListener('connectionstatechange', () => {
+            cameraState = pc.connectionState;
+            onCameraStateChanged(cameraState);
+            console.log('Connection state changed:', pc.connectionState);
+        });
+
+        pc.addEventListener('iceconnectionstatechange', () => {
+            console.log('ICE connection state changed:', pc.iceConnectionState);
+        });
+
+        pc.addEventListener('signalingstatechange', () => {
+            console.log('Signaling state changed:', pc.signalingState);
         });
     }
 
@@ -461,6 +601,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }, 100);
 
     connect('video+audio');
-    videoElem.style.display = 'block';
-    videoLoadingMessage.style.display = 'none';
+    setInterval(() => {
+        if (cameraState !== 'connected' && cameraState !== 'connecting') {
+            connect('video+audio');
+        }
+    }, 1000)
 })

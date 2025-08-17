@@ -28,13 +28,21 @@ sio = socketio.AsyncServer(
     cors_allowed_origins='*')
 
 app = FastAPI()
-app.mount('/socket.io', socketio.ASGIApp(sio, other_asgi_app=app))
-app.mount('/', StaticFiles(directory='static', html=True), name='static')
-
 clients = Clients()
 event_handler = EventHandler(sio, clients)
 onvif_monitor = ONVIFMonitor(event_handler)
 
+
+@app.get('/api/v1/go2rtc-config')
+async def get_go2rtc_config():
+    payload = {
+        'host': CONFIG.go2rtc_host,
+        'src': CONFIG.go2rtc_src
+    }
+    return payload
+
+app.mount('/socket.io', socketio.ASGIApp(sio, other_asgi_app=app))
+app.mount('/', StaticFiles(directory='static', html=True), name='static')
 
 @sio.on('connect')
 async def handle_connect(sid, environ):

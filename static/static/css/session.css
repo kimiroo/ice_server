@@ -92,7 +92,7 @@ body.is-disarmed {
 .big-button {
     width: 100%;
     height: auto;
-    aspect-ratio: 4 / 3;
+    aspect-ratio: 2 / 1;
     background-color: #ff3333;
     border: none;
     border-radius: 12px;
@@ -117,6 +117,37 @@ body.is-disarmed {
 }
 
 .big-button.disabled:hover {
+    box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+}
+
+.small-button {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 7 / 1;
+    background-color: #0aab0b;
+    border: none;
+    border-radius: 12px;
+    color: white;
+    font-size: 3vw;
+    font-weight: bold;
+    cursor: pointer;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.small-button:hover {
+    box-shadow: 0 0 20px rgba(10, 171, 11, 0.5);
+}
+
+.small-button:active {
+    transform: scale(0.98);
+}
+
+.small-button.disabled {
+    background-color: #424242;
+}
+
+.small-button.disabled:hover {
     box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
 }
 
