@@ -42,7 +42,7 @@ class Clients:
                             new_event_list.append(event)
                         else:
                             break
-                    client.restore_events(new_event_list)
+                    await client.restore_events(new_event_list)
 
     async def get_client(self, sid: str) -> None:
         async with self._lock:
@@ -69,7 +69,7 @@ class Clients:
             self._events.append(event)
 
             for client in self._clients.values():
-                client.add_event(event)
+                await client.add_event(event)
 
     async def get_event_list(self, sid: str, json_friendly: bool) -> List[dict]:
         async with self._lock:
@@ -85,7 +85,7 @@ class Clients:
     async def ack_event(self, sid: str, event_id: str) -> None:
         async with self._lock:
             if sid in self._clients:
-                self._clients[sid].ack_event(event_id)
+                await self._clients[sid].ack_event(event_id)
 
     async def clean_client(self) -> List[str]:
         async with self._lock:
@@ -104,7 +104,7 @@ class Clients:
                 if (datetime.datetime.now() - event.timestamp).total_seconds() > EVENT_REMOVAL_THRESHOLD:
                     self._events.remove(event)
                     for client in self._clients.values():
-                        client.ack_event(str(event.id))
+                        await client.ack_event(str(event.id))
 
     async def is_previous_event_valid(self, event_event: str) -> bool:
         async with self._lock:

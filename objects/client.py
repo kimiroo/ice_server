@@ -1,10 +1,12 @@
 import datetime
+import asyncio
 from typing import List
 
 from objects.event import Event
 
 class Client:
     def __init__(self, sid: str) -> None:
+        self._lock = asyncio.Lock()
         self.sid: str = sid
         self.name: str | None = None
         self.type: str | None = None
@@ -19,17 +21,18 @@ class Client:
     def update_last_seen(self) -> None:
         self.last_seen = datetime.datetime.now()
 
-    def add_event(self, event: Event) -> None:
-        self.events.append(event)
+    async def add_event(self, event: Event) -> None:
+        async with self._lock:
+            self.events.append(event)
 
-    def ack_event(self, event_id: str) -> None:
-        for event in self.events:
-            if str(event.id) == event_id:
-                self.events.remove(event)
-                break
+    async def ack_event(self, event_id: str) -> None:
+        async with self._lock:
+            new_event_list = [event for event in self.events if str(event.id) != event_id]
+            self.events = new_event_list
 
-    def restore_events(self, event_list: List[Event]) -> None:
-        self.events = event_list
+    async def restore_events(self, event_list: List[Event]) -> None:
+        async with self._lock:
+            self.events = event_list
 
     def to_dict(self, json_friendly: bool):
         client_obj = {

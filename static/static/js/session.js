@@ -154,8 +154,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function handleEvent(eventObj, isIgnored) {
         // ACK Event
-        let ackList = [];
-        ackList.push(eventObj['id']);
         socket.emit('ack', {
             'id': eventObj['id'],
         });
@@ -244,7 +242,7 @@ document.addEventListener('DOMContentLoaded', () => {
         videoOverlayElem.classList.add('flash-red');
         flashEventSource = eventName;
 
-        setTimeout(() => removeFlash, warnDuration);
+        setTimeout(removeFlash, warnDuration);
     }
 
     function removeFlash(eventName = null) {
@@ -483,7 +481,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     socket.on('get_result', (data) => {
-        isArmed = data['isArmed'] == true ? true : false;
+        isArmed = Boolean(data['isArmed']);
 
         const eventList = data['eventList'];
         const clientList = data['clientList'];
@@ -507,6 +505,8 @@ document.addEventListener('DOMContentLoaded', () => {
         let newEventList = [];
         let ackedEventList = [];
 
+        socket.emit('pong');
+
         function isDuplicateEvent(eventID) {
             for (const event of receivedEventList) {
                 if (event['id'] === eventID) {
@@ -525,7 +525,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         if (newEventList.length > 0) {
-            addLogEntry(`Detected a delay in processing event: ${eventList.length} events in queue`, false)
+            addLogEntry(`Detected a delay in processing event: ${newEventList.length} events in queue`, false)
             newEventList.forEach(event => {
                 handleEvent(event, false);
             });
@@ -537,18 +537,24 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         });
 
+        /*
         socket.emit('pong');
+
+        if (eventList.length > 0) {
+            addLogEntry(`Detected a delay in processing event: ${eventList.length} events in queue`, false)
+            eventList.forEach(event => {
+                console.log(event);
+                handleEvent(event, false);
+            });
+        }
+        */
 
         // Update heartbeat
         heartbeatTimestamp = new Date();
         updateHeartbeat();
 
         // Connected client count check
-        if (isArmed &&
-            (clientListPC.length === 0 ||
-            clientListHA.length === 0 ||
-            clientListHTML.length === 0)) {
-
+        if (isArmed && (clientListPC.length === 0 || clientListHA.length === 0 || clientListHTML.length === 0)) {
             const timeNow = new Date();
             internalEvent = {
                 'event': 'zero_client',
@@ -557,10 +563,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 'timestamp': timeNow.toISOString()
             }
             handleInternalEvent(internalEvent);
-        } else if (isArmed &&
-                   (clientListPC.length > 0 ||
-                   clientListHA.length > 0 ||
-                   clientListHTML.length > 0)) {
+        } else if (isArmed) {
             if (flashEventSource === 'client_zero_client') {
                 removeFlash('client_zero_client');
             }
