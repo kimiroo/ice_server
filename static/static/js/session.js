@@ -365,7 +365,7 @@ document.addEventListener('DOMContentLoaded', () => {
             updateElement(statusCountHA, `<b>${clientListHA.length}</b>&nbsp; ${createClientList(clientListHA)}`, true);
             updateElement(statusCountPC, `<b>${clientListPC.length}</b>&nbsp; ${createClientList(clientListPC)}`, true);
             oldClientListPC = clientListPC;
-            oldClientListHA = clientListHAclientListPC;
+            oldClientListHA = clientListHA;
             oldClientListHTML = clientListHTMLclientListPC;
         }
 
