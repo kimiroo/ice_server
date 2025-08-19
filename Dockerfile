@@ -6,7 +6,7 @@ ENV PORT=28080
 COPY . /app
 WORKDIR /app
 
-RUN apk add --no-cache curl
+RUN apk add --no-cache curl build-base python3-dev
 RUN pip install -r requirements.txt
 
 EXPOSE $PORT
