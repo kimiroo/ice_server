@@ -504,13 +504,38 @@ document.addEventListener('DOMContentLoaded', () => {
         clientListHA = newClientListHA;
         clientListHTML = newClientListHTML;
 
-        if (eventList.length > 0) {
-            addLogEntry(`Detected a delay in processing event: ${eventList.length} events in queue`, false)
+        let newEventList = [];
+        let ackedEventList = [];
 
-            eventList.forEach(event => {
+        function isDuplicateEvent(eventID) {
+            for (const event of receivedEventList) {
+                if (event['id'] === eventID) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        eventList.forEach(event => {
+            if (isDuplicateEvent(event['id'])) {
+                ackedEventList.push(event['id']);
+            } else {
+                newEventList.push(event);
+            }
+        });
+
+        if (newEventList.length > 0) {
+            addLogEntry(`Detected a delay in processing event: ${eventList.length} events in queue`, false)
+            newEventList.forEach(event => {
                 handleEvent(event, false);
             });
         }
+
+        ackedEventList.forEach(eventID => {
+            socket.emit('ack', { // ACK one more time just to make sure
+                'id': eventID,
+            });
+        });
 
         socket.emit('pong');
 
