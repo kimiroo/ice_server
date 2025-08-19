@@ -196,7 +196,8 @@ async def main():
                                             host=HOST,
                                             port=PORT,
                                             log_config=None,
-                                            log_level=None)
+                                            log_level=None,
+                                            access_log=False)
             uvicorn_server = uvicorn.Server(uvicorn_config)
             await uvicorn_server.serve()
         except [KeyboardInterrupt, asyncio.exceptions.CancelledError]:
