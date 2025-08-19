@@ -366,7 +366,7 @@ document.addEventListener('DOMContentLoaded', () => {
             updateElement(statusCountPC, `<b>${clientListPC.length}</b>&nbsp; ${createClientList(clientListPC)}`, true);
             oldClientListPC = clientListPC;
             oldClientListHA = clientListHA;
-            oldClientListHTML = clientListHTMLclientListPC;
+            oldClientListHTML = clientListHTML;
         }
 
         if (isArmed) {
