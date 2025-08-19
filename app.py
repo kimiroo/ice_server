@@ -47,7 +47,7 @@ app.mount('/', StaticFiles(directory='static', html=True), name='static')
 @sio.on('connect')
 async def handle_connect(sid, environ):
     await clients.add_client(sid)
-    await sio.emit('connected_ice', sid=sid)
+    await sio.emit('connected_ice', to=sid)
     log.info(f'Client \'{sid}\' connected.')
 
 @sio.on('disconnect')
