@@ -1,8 +1,7 @@
 FROM python:3.13-alpine
 
 ENV HOST=0.0.0.0
-ENV PORT=8080
-ENV DEBUG=false
+ENV PORT=28080
 
 COPY . /app
 WORKDIR /app

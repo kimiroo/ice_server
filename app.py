@@ -6,6 +6,7 @@ logging.basicConfig(
     datefmt='%Y-%m-%d %H:%M:%S',
 )
 
+import os
 import uuid
 import asyncio
 import uvicorn
@@ -22,6 +23,9 @@ from objects.clients import Clients
 from onvif_.monitor_events import ONVIFMonitor
 
 log = logging.getLogger('main')
+
+HOST = os.environ.get('HOST', '0.0.0.0')
+PORT = int(os.environ.get('PORT', '8080'))
 
 sio = socketio.AsyncServer(
     async_mode='asgi',
@@ -178,7 +182,6 @@ async def event_worker():
             pass
 
 async def main():
-
     while True:
         try:
             log.info(f'Starting background workers...')
@@ -190,8 +193,8 @@ async def main():
 
             log.info(f'Listening at http://{CONFIG.host}:{CONFIG.port}...')
             uvicorn_config = uvicorn.Config(app,
-                                            host=CONFIG.host,
-                                            port=CONFIG.port,
+                                            host=HOST,
+                                            port=PORT,
                                             log_config=None,
                                             log_level=None)
             uvicorn_server = uvicorn.Server(uvicorn_config)
