@@ -51,6 +51,10 @@ document.addEventListener('DOMContentLoaded', () => {
     let clientListHA = [];
     let clientListHTML = [];
 
+    let oldClientListPC = [];
+    let oldClientListHA = [];
+    let oldClientListHTML = [];
+
     const socket = io({
         transports: ['websocket', 'polling'],
         upgrade: true,
@@ -356,9 +360,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Common elements
         updateElement(statusConnected, isConected ? 'True' : 'False');
-        updateElement(statusCountHTML, `<b>${clientListHTML.length}</b>&nbsp; ${createClientList(clientListHTML)}`, true);
-        updateElement(statusCountHA, `<b>${clientListHA.length}</b>&nbsp; ${createClientList(clientListHA)}`, true);
-        updateElement(statusCountPC, `<b>${clientListPC.length}</b>&nbsp; ${createClientList(clientListPC)}`, true);
+        if (clientListPC !== oldClientListPC || clientListHA !== oldClientListHA || clientListHTML !== oldClientListHTML) {
+            updateElement(statusCountHTML, `<b>${clientListHTML.length}</b>&nbsp; ${createClientList(clientListHTML)}`, true);
+            updateElement(statusCountHA, `<b>${clientListHA.length}</b>&nbsp; ${createClientList(clientListHA)}`, true);
+            updateElement(statusCountPC, `<b>${clientListPC.length}</b>&nbsp; ${createClientList(clientListPC)}`, true);
+            oldClientListPC = clientListPC;
+            oldClientListHA = clientListHAclientListPC;
+            oldClientListHTML = clientListHTMLclientListPC;
+        }
 
         if (isArmed) {
             if (document.body.classList.contains('is-disarmed') ||
@@ -536,18 +545,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 'id': eventID,
             });
         });
-
-        /*
-        socket.emit('pong');
-
-        if (eventList.length > 0) {
-            addLogEntry(`Detected a delay in processing event: ${eventList.length} events in queue`, false)
-            eventList.forEach(event => {
-                console.log(event);
-                handleEvent(event, false);
-            });
-        }
-        */
 
         // Update heartbeat
         heartbeatTimestamp = new Date();
