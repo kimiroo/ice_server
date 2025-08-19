@@ -52,8 +52,8 @@ async def handle_connect(sid, environ):
 
 @sio.on('disconnect')
 async def handle_disconnect(sid, reason):
-    log.info(f'Client \'{sid}\' disconnected, reason: {str(reason)}')
     client: Client = await clients.get_client(sid)
+    log.info(f'Client \'{sid}\' ({client.name}, {client.type}) disconnected, reason: {str(reason)}')
     event = Event(
         event_id=uuid.uuid4(),
         event_event='disconnected',
