@@ -41,6 +41,10 @@ async def get_go2rtc_config():
     }
     return payload
 
+@app.get('/api/v1/health')
+async def get_health():
+    return 'I\'m healthy!'
+
 app.mount('/socket.io', socketio.ASGIApp(sio, other_asgi_app=app))
 app.mount('/', StaticFiles(directory='static', html=True), name='static')
 
