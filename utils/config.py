@@ -3,7 +3,6 @@ import logging
 from typing import List, Union
 
 CONFIG_PATH = 'config.json'
-CONFIG = None
 
 log = logging.getLogger(__name__)
 

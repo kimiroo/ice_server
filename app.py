@@ -140,46 +140,69 @@ async def handle_pong(sid, data = {}):
 
 async def ping_worker():
     while state.is_server_up():
-        await sio.emit('ping')
-        await asyncio.sleep(.1)
+        try:
+            await sio.emit('ping')
+            await asyncio.sleep(.1)
+        except asyncio.CancelledError:
+            log.info('Ping worker was cancelled.')
+            break
+        except Exception:
+            pass
 
 async def client_worker():
     while state.is_server_up():
-        deleted_client_sids = await clients.clean_client()
-        for sid in deleted_client_sids:
-            await sio.disconnect(sid)
-        await asyncio.sleep(.1)
+        try:
+            deleted_client_sids = await clients.clean_client()
+            for sid in deleted_client_sids:
+                await sio.disconnect(sid)
+            await asyncio.sleep(.1)
+        except asyncio.CancelledError:
+            log.info('Client cleaner worker was cancelled.')
+            break
+        except Exception:
+            pass
 
 async def event_worker():
     while state.is_server_up():
-        await clients.clean_event()
-        await asyncio.sleep(.1)
+        try:
+            await clients.clean_event()
+            await asyncio.sleep(.1)
+        except asyncio.CancelledError:
+            log.info('Event cleaner worker was cancelled.')
+            break
+        except Exception:
+            pass
 
 async def main():
-    try:
-        log.info(f'Starting background workers...')
-        asyncio.create_task(ping_worker())
-        asyncio.create_task(client_worker())
-        asyncio.create_task(event_worker())
-        if CONFIG.onvif_enabled:
-            asyncio.create_task(onvif_monitor.onvif_event_monitoring_worker())
 
-        log.info(f'Listening at http://{CONFIG.host}:{CONFIG.port}...')
-        uvicorn_config = uvicorn.Config(app,
-                                        host=CONFIG.host,
-                                        port=CONFIG.port,
-                                        log_config=None,
-                                        log_level=None)
-        uvicorn_server = uvicorn.Server(uvicorn_config)
-        await uvicorn_server.serve()
-    except [KeyboardInterrupt, asyncio.exceptions.CancelledError]:
-        pass
-    except Exception as e:
-        log.error(f'Unexpected error occured: {e}')
-    finally:
-        log.info('Shutting down...')
-        state.set_server_up(False)
-        await asyncio.sleep(1)
+    while True:
+        try:
+            log.info(f'Starting background workers...')
+            task_ping_worker = asyncio.create_task(ping_worker())
+            task_client_worker = asyncio.create_task(client_worker())
+            task_event_worker = asyncio.create_task(event_worker())
+            if CONFIG.onvif_enabled:
+                asyncio.create_task(onvif_monitor.onvif_event_monitoring_worker())
+
+            log.info(f'Listening at http://{CONFIG.host}:{CONFIG.port}...')
+            uvicorn_config = uvicorn.Config(app,
+                                            host=CONFIG.host,
+                                            port=CONFIG.port,
+                                            log_config=None,
+                                            log_level=None)
+            uvicorn_server = uvicorn.Server(uvicorn_config)
+            await uvicorn_server.serve()
+        except [KeyboardInterrupt, asyncio.exceptions.CancelledError]:
+            pass
+        except Exception as e:
+            log.error(f'Unexpected error occured: {e}')
+        finally:
+            log.info('Shutting down...')
+            state.set_server_up(False)
+            task_ping_worker.cancel()
+            task_client_worker.cancel()
+            task_event_worker.cancel()
+            await asyncio.sleep(1)
 
 if __name__ == '__main__':
     asyncio.run(main())

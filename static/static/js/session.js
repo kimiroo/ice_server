@@ -1,8 +1,8 @@
 const paramsString = window.location.search;
 const searchParams = new URLSearchParams(paramsString);
 
-const wsURL = '';
 const clientName = searchParams.get('clientName');
+const warnDuration = 10 * 1000; // 10 seconds
 
 if (!clientName) {
     alert('Client name not set. Redirecting to home...');
@@ -17,6 +17,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnArm = document.getElementById('btnArm');
     const btnRecover = document.getElementById('btnRecover');
     const btnToggleFullscreen = document.getElementById('btnToggleFullscreen');
+
+    const modal = document.getElementById('modal');
+    const modalTitle = document.getElementById('modalTitle');
+    const modalMessage = document.getElementById('modalMessage');
+    const modalBtnWrapper = document.getElementById('modalBtnWrapper');
 
     const videoElem = document.getElementById('video');
     const videoLoadingMessage = document.getElementById('videoLoadingMessage');
@@ -40,6 +45,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let emitedEventList = [];
     let receivedEventList = [];
     let flashEventSource = null;
+    let videoOverlayEventSource = null;
 
     let clientListPC = [];
     let clientListHA = [];
@@ -52,6 +58,68 @@ document.addEventListener('DOMContentLoaded', () => {
         timeout: 1000,
         forceNew: true
     });
+
+    function _showModal(title, message, buttons) {
+        // Remove existing buttons
+        modalBtnWrapper.innerHTML = '';
+
+        // Set modal content
+        modalTitle.innerText = title;
+        modalMessage.innerText = message;
+
+        // Create and append buttons
+        buttons.forEach(btnConfig => {
+            const btn = document.createElement('button');
+            btn.innerText = btnConfig.text;
+            btn.classList.add('modal-button');
+
+            if (btnConfig.type) {
+                btn.classList.add(btnConfig.type);
+            }
+
+            btn.addEventListener('click', () => {
+                if (btnConfig.callback) {
+                    btnConfig.callback();
+                }
+                hideModal();
+            });
+            modalBtnWrapper.appendChild(btn);
+        });
+
+        // Display the modal
+        modal.classList.add('is-visible');
+    }
+
+    function modalConfirm(title, message, options = {}) {
+        const buttons = [
+            {
+                text: 'Confirm',
+                type: 'action',
+                callback: options.confirmCallback,
+            },
+            {
+                text: 'Cancel',
+                type: '',
+                callback: options.cancelCallback,
+            }
+        ];
+        _showModal(title, message, buttons);
+    }
+
+    function modalAlert(title, message, options = {}) {
+        const buttons = [
+            {
+                text: 'OK',
+                type: '',
+                callback: options.okCallback,
+            }
+        ];
+        _showModal(title, message, buttons);
+    }
+
+    function hideModal() {
+        modal.classList.remove('is-visible');
+    }
 
     function capitalizeFirstLetter(str) {
     if (str.length === 0) {
@@ -66,7 +134,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const timeEvent = new Date(event['timestamp']);
             const timeDiff = timeNow.getTime() - timeEvent.getTime();
 
-            if (timeDiff < 15 * 1000 && event['type'] === eventType) {
+            if (timeDiff < warnDuration && event['type'] === eventType) {
                 if (eventName === null || event['event'] === eventName) {
                     return true;
                 }
@@ -111,7 +179,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 receivedEventList.push(eventObj);
                 addLogEntry(`ONVIF: ${capitalizeFirstLetter(eventObj['event'])} Detected!`, true);
                 flash(`${eventObj['type']}_${eventObj['event']}`);
-                showVideoOverlay(`${eventObj['event'].toUpperCase()} DETECTED!`);
+                showVideoOverlay(`${eventObj['type']}_${eventObj['event']}`, `${eventObj['event'].toUpperCase()} DETECTED!`);
 
             } else if (eventObj['type'] === 'user' && !isEmitedEvent(eventObj['id'])) {
                 receivedEventList.push(eventObj);
@@ -128,7 +196,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 } else {
                     addLogEntry(`CLIENT: Client '${eventObj['data']['client']['name']}' ${eventObj['event']}.`, true);
                     flash(`${eventObj['type']}_${eventObj['event']}`);
-                    showVideoOverlay(`CLIENT '${eventObj['data']['client']['name']}' DISCONNECTED!`);
+                    showVideoOverlay(`${eventObj['type']}_${eventObj['event']}`, `CLIENT '${eventObj['data']['client']['name']}' DISCONNECTED!`);
+                }
+            } else if (eventObj['type'] === 'user' && eventObj['event'] === 'ignore') {
+                receivedEventList.push(eventObj);
+                if (flashEventSource !== null) {
+                    removeFlash();
+                }
+                if (videoOverlayEventSource !== null) {
+                    removeVideoOverlay();
                 }
             }
         }
@@ -139,10 +215,10 @@ document.addEventListener('DOMContentLoaded', () => {
             receivedEventList.push(eventObj);
             if (eventObj['event'] === 'zero_client') {
                 addLogEntry(`CLIENT: Zero client detected: PC: ${clientListPC.length}, HA: ${clientListHA.length}, HTML: ${clientListHTML.length}`, true);
-                showVideoOverlay(`ZERO CLIENT DETECTED!`);
+                showVideoOverlay(`${eventObj['type']}_${eventObj['event']}`, `ZERO CLIENT DETECTED!`);
             } else if (eventObj['event'] === 'disconnected') {
                 addLogEntry(`CONNECTION: Connection to server lost.`, true);
-                showVideoOverlay(`CONNECTION LOST!`);
+                showVideoOverlay(`${eventObj['type']}_${eventObj['event']}`, `CONNECTION LOST!`);
             }
             flash(`${eventObj['type']}_${eventObj['event']}`);
         }
@@ -168,22 +244,20 @@ document.addEventListener('DOMContentLoaded', () => {
         videoOverlayElem.classList.add('flash-red');
         flashEventSource = eventName;
 
-        setTimeout(() => {
-            removeFlash()
-        }, 15000);
+        setTimeout(() => removeFlash, warnDuration);
     }
 
-    function removeFlash() {
+    function removeFlash(eventName = null) {
+        if (eventName !== null && eventName !== flashEventSource) {
+            console.log('Tried to dismiss non-matching event\'s flash.');
+            return;
+        }
         document.body.classList.remove('flash-red');
         videoOverlayElem.classList.remove('flash-red');
         flashEventSource = null;
     }
 
     function triggerEvent(eventName, isKill) {
-        if (!isArmed) {
-            alert('ICE isn\'t armed.');
-            return;
-        }
         const selectedKillMode = document.querySelector('input[name="killMode"]:checked').value;
         const eventID = generateUUID();
         let payload = {
@@ -204,15 +278,23 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    function showVideoOverlay(message) {
+    function showVideoOverlay(eventName, message) {
 
         videoOverlayMessage.innerText = message;
         videoOverlayElem.style.display = 'block';
+        videoOverlayEventSource = eventName;
 
-        setTimeout(() => {
-            videoOverlayMessage.innerText = '';
-            videoOverlayElem.style.display = 'none';
-        }, 15000);
+        setTimeout(removeVideoOverlay, warnDuration);
+    }
+
+    function removeVideoOverlay(eventName = null) {
+        if (eventName !== null && eventName !== videoOverlayEventSource) {
+            console.log('Tried to dismiss non-matching event\'s video overlay.');
+            return;
+        }
+        videoOverlayMessage.innerText = '';
+        videoOverlayElem.style.display = 'none';
+        videoOverlayEventSource = null;
     }
 
     function addLogEntry(message, isPriority = false) {
@@ -250,6 +332,14 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function updatePage() {
+        if (!isArmed) {
+            if (flashEventSource !== null) {
+                removeFlash();
+            }
+            if (videoOverlayEventSource !== null) {
+                removeVideoOverlay();
+            }
+        }
 
         function createClientList(clientList) {
             let newContent = '';
@@ -319,7 +409,10 @@ document.addEventListener('DOMContentLoaded', () => {
             updatePage();
         } else {
             if (flashEventSource === 'connection_disconnected') {
-                removeFlash();
+                removeFlash('connection_disconnected');
+            }
+            if (videoOverlayEventSource === 'connection_disconnected') {
+                removeVideoOverlay('connection_disconnected');
             }
         }
     }
@@ -423,9 +516,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 'timestamp': timeNow.toISOString()
             }
             handleInternalEvent(internalEvent);
-        } else {
+        } else if (isArmed &&
+                   (clientListPC.length > 0 ||
+                   clientListHA.length > 0 ||
+                   clientListHTML.length > 0)) {
             if (flashEventSource === 'client_zero_client') {
-                removeFlash();
+                removeFlash('client_zero_client');
+            }
+            if (videoOverlayEventSource === 'client_zero_client') {
+                removeVideoOverlay('client_zero_client');
             }
         }
 
@@ -441,19 +540,59 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     btnKill.addEventListener('click', () => {
+        if (!isArmed) {
+            modalAlert('ERROR', 'ICE isn\'t armed.');
+            return;
+        }
         triggerEvent('kill', true);
     });
 
     btnArm.addEventListener('click', () => {
-        socket.emit('set_armed', {'armed': !isArmed});
+        if (isArmed) {
+            modalConfirm(
+                'Disarm ICE',
+                'Do you want to disarm ICE?',
+                {
+                    confirmCallback: () => socket.emit('set_armed', {'armed': false})
+                }
+            );
+        } else {
+            modalConfirm(
+                'Arm ICE',
+                'Do you want to arm ICE?',
+                {
+                    confirmCallback: () => socket.emit('set_armed', {'armed': true})
+                }
+            );
+        }
     });
 
     btnRecover.addEventListener('click', () => {
-        triggerEvent('recover', false);
+        if (!isArmed) {
+            modalAlert('ERROR', 'ICE isn\'t armed.')
+        } else {
+            modalConfirm(
+                'Recover State',
+                'Do you want to recover the state?',
+                {
+                    confirmCallback: () => triggerEvent('recover', false)
+                }
+            );
+        }
     });
 
     btnIgnore.addEventListener('click', () => {
+        if (!isArmed) {
+            modalAlert('ERROR', 'ICE isn\'t armed.');
+            return;
+        }
         triggerEvent('ignore', false);
+    });
+
+    modal.addEventListener('click', (event) => {
+        if (event.target === modal) {
+            hideModal();
+        }
     });
 
     btnToggleFullscreen.addEventListener('click', () => {
@@ -575,27 +714,29 @@ document.addEventListener('DOMContentLoaded', () => {
 
     statusClientName.innerText = clientName;
 
-    setInterval(() => {
-        updateHeartbeat();
+    setTimeout(() => { // Wait 1 second for page to initialize
+        setInterval(() => {
+            updateHeartbeat();
 
-        function clearOldEvents(eventList) {
-            const timeNow = new Date();
-            return eventList.filter(event => {
-                const timeEvent = new Date(event['timestamp']);
-                const timeDiff = timeNow.getTime() - timeEvent.getTime();
-                return timeDiff < 15 * 1000;
-            });
-        }
-        emitedEventList = clearOldEvents(emitedEventList);
-        receivedEventList = clearOldEvents(receivedEventList);
+            function clearOldEvents(eventList) {
+                const timeNow = new Date();
+                return eventList.filter(event => {
+                    const timeEvent = new Date(event['timestamp']);
+                    const timeDiff = timeNow.getTime() - timeEvent.getTime();
+                    return timeDiff < warnDuration;
+                });
+            }
+            emitedEventList = clearOldEvents(emitedEventList);
+            receivedEventList = clearOldEvents(receivedEventList);
 
-        updatePage();
+            updatePage();
 
-        if (!socket.connected) {
-            console.log('connecting');
-            socket.connect();
-        }
-    }, 100);
+            if (!socket.connected) {
+                console.log('connecting');
+                socket.connect();
+            }
+        }, 100);
+    }, 1000);
 
     connect('video+audio');
     setInterval(() => {
