@@ -781,7 +781,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 console.log('connecting');
                 socket.connect();
             }
-        }, 100);
+        }, 1000);
     }, 1000);
 
     connect('video+audio');
