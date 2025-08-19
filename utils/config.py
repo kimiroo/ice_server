@@ -2,7 +2,7 @@ import json
 import logging
 from typing import List, Union
 
-CONFIG_PATH = 'config.json'
+CONFIG_PATH = '/config.json'
 
 log = logging.getLogger(__name__)
 
