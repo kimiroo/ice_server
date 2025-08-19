@@ -443,7 +443,23 @@ document.addEventListener('DOMContentLoaded', () => {
         return uuid;
     }
 
+    async function requestWakeLock() {
+        try {
+            wakeLock = await navigator.wakeLock.request('screen');
+        } catch (err) {
+            console.error(`Error requesting Wake Lock: ${err.name}, ${err.message}`);
+        }
+    }
+
+    function releaseWakeLock() {
+        if (wakeLock !== null) {
+            wakeLock.release();
+            wakeLock = null;
+        }
+    }
+
     socket.on('connect', () => {
+        heartbeatTimestamp = new Date();
         let payload = {
             'name': clientName,
             'type': 'html'
@@ -597,10 +613,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     btnToggleFullscreen.addEventListener('click', () => {
         if (!document.fullscreenElement) {
-            document.documentElement.requestFullscreen()
+            document.documentElement.requestFullscreen();
+            requestWakeLock();
         } else {
             if (document.exitFullscreen) {
-            document.exitFullscreen()
+                document.exitFullscreen();
+                releaseWakeLock();
             }
         }
     });
