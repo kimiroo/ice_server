@@ -15,6 +15,10 @@ body.is-armed {
     background-color: #000;
 }
 
+body.is-standalone {
+    background-color: #00f;
+}
+
 body.is-disarmed {
     background-color: #0aab0b;
 }
@@ -303,6 +307,33 @@ body.is-disarmed {
     margin-bottom: 10px;
     font-size: 16px;
     color: #fff;
+}
+
+.log-header {
+    display: flex;
+    justify-content: space-between;
+    padding-bottom: 10px;
+}
+
+.clear-button {
+    width: auto;
+    height: auto;
+    padding: 5px 10px;
+    background-color: #444;
+    border: none;
+    border-radius: 12px;
+    color: white;
+    cursor: pointer;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.clear-button:hover {
+    box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+}
+
+.clear-button:active {
+    transform: scale(0.98);
 }
 
 .log-container {

@@ -24,14 +24,17 @@
                 <div id="videoLoadingMessage" class="video-feed">
                     📹 Loading Camera Feed...
                 </div>
-                <video id="video" class="video-feed" style="display: none;" autoplay playsinline muted>
+                <video id="video" class="video-feed" style="display: none;" autoplay playsinline muted controls controlslist="nodownload">
                 </video>
                 <div class="video-overlay" id="videoOverlay">
                     🚨 <span id="videoOverlayMessage"></span> 🚨
                 </div>
             </div>
             <div class="status-log">
-                <h3>Event Log</h3>
+                <div class="log-header">
+                    <h3>Event Log</h3>
+                    <span class="clear-button" id="btnClearLog">Clear</span>
+                </div>
                 <div class="log-container" id="logContainer">
                 </div>
             </div>
@@ -58,10 +61,17 @@
                         <input type="radio" id="killMode3" name="killMode" value="swap">
                         <label for="killMode3">Swap</label>
                     </div>
+                    <div class="radio-option">
+                        <input type="checkbox" id="checkboxWarnSound" name="warnSound" checked>
+                        <label for="warnSound">Warning Sound</label>
+                    </div>
                 </div>
                 <div class="option-list">
-                    <button id="btnArm" class="link-button">
+                    <button id="btnArm" class="link-button" style="display: block;">
                         🚨 Arm ICE
+                    </button>
+                    <button id="btnArmStandalone" class="link-button" style="display: block;">
+                        🚨 Arm Standalone
                     </button>
                     <button id="btnRecover" class="link-button">
                         ✅ Recover

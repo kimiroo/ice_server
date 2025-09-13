@@ -4,6 +4,9 @@ const searchParams = new URLSearchParams(paramsString);
 const clientName = searchParams.get('clientName');
 const warnDuration = 10 * 1000; // 10 seconds
 
+const warnAudio = new Audio('/static/media/warn.wav');
+let soundTimeoutId;
+
 if (!clientName) {
     alert('Client name not set. Redirecting to home...');
     window.location.href = '/';
@@ -15,8 +18,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnKill = document.getElementById('btnKill');
     const btnIgnore = document.getElementById('btnIgnore');
     const btnArm = document.getElementById('btnArm');
+    const btnArmStandalone = document.getElementById('btnArmStandalone');
     const btnRecover = document.getElementById('btnRecover');
     const btnToggleFullscreen = document.getElementById('btnToggleFullscreen');
+    const btnClearLog = document.getElementById('btnClearLog');
+
+    const logContainer = document.getElementById('logContainer');
+    const checkboxWarnSound = document.getElementById('checkboxWarnSound');
 
     const modal = document.getElementById('modal');
     const modalTitle = document.getElementById('modalTitle');
@@ -37,6 +45,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const statusCountPC = document.getElementById('statusCountPC');
 
     let isArmed = false;
+    let isArmedStandalone = false;
     let isConected = false;
     let heartbeatTimestamp = new Date(0);
     let cameraState = null;
@@ -183,6 +192,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 flash(`${eventObj['type']}_${eventObj['event']}`);
                 showVideoOverlay(`${eventObj['type']}_${eventObj['event']}`, `${eventObj['event'].toUpperCase()} DETECTED!`);
 
+                if (checkboxWarnSound.checked) {
+                    startSound();
+                }
+
             } else if (eventObj['type'] === 'user' && !isEmitedEvent(eventObj['id'])) {
                 receivedEventList.push(eventObj);
                 if (eventObj['event'] === 'kill') {
@@ -208,6 +221,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (videoOverlayEventSource !== null) {
                     removeVideoOverlay();
                 }
+                stopSound();
             }
         }
     }
@@ -300,8 +314,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function addLogEntry(message, isPriority = false) {
-        const logContainer = document.getElementById('logContainer');
-
         // Create a new Date object representing the current moment.
         const date = new Date();
 
@@ -323,6 +335,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
         logContainer.appendChild(logEntry);
         logContainer.scrollTop = logContainer.scrollHeight;
+    }
+
+    function armStandalone(setArmedStandalone) {
+        isArmedStandalone = setArmedStandalone;
+
+        updatePage();
     }
 
     function updateElement(element, newContent, isHTML = false) {
@@ -369,10 +387,15 @@ document.addEventListener('DOMContentLoaded', () => {
             oldClientListHTML = clientListHTML;
         }
 
-        if (isArmed) {
+        if (isArmed && isArmedStandalone) {
+            armStandalone(false);
+
+        } else if (isArmed) {
             if (document.body.classList.contains('is-disarmed') ||
+                document.body.classList.contains('is-standalone') ||
                 !document.body.classList.contains('is-armed')) {
                 document.body.classList.remove('is-disarmed');
+                document.body.classList.remove('is-standalone');
                 document.body.classList.add('is-armed');
             }
 
@@ -381,12 +404,48 @@ document.addEventListener('DOMContentLoaded', () => {
                 btnIgnore.classList.remove('disabled');
             }
 
+            if (btnArm.style.display !== 'block') {
+                btnArm.style.display = 'block'
+            }
+
+            if (btnArmStandalone.style.display !== 'none') {
+                btnArmStandalone.style.display = 'none'
+            }
+
             updateElement(statusArmed, 'True');
             updateElement(btnArm, '🔌 Disarm ICE');
+
+        } else if (isArmedStandalone) {
+            if (document.body.classList.contains('is-disarmed') ||
+                document.body.classList.contains('is-armed') ||
+                !document.body.classList.contains('is-standalone')) {
+                document.body.classList.remove('is-disarmed');
+                document.body.classList.remove('is-armed');
+                document.body.classList.add('is-standalone');
+            }
+
+            if (btnKill.classList.contains('disabled') || btnIgnore.classList.contains('disabled')) {
+                btnKill.classList.remove('disabled');
+                btnIgnore.classList.remove('disabled');
+            }
+
+            if (btnArm.style.display !== 'none') {
+                btnArm.style.display = 'none'
+            }
+
+            if (btnArmStandalone.style.display !== 'block') {
+                btnArmStandalone.style.display = 'block'
+            }
+
+            updateElement(statusArmed, 'Standalone');
+            updateElement(btnArmStandalone, '🔌 Disarm Standalone');
+
         } else {
             if (document.body.classList.contains('is-armed') ||
+                document.body.classList.contains('is-standalone') ||
                 !document.body.classList.contains('is-disarmed')) {
                 document.body.classList.remove('is-armed');
+                document.body.classList.remove('is-standalone');
                 document.body.classList.add('is-disarmed');
             }
 
@@ -395,8 +454,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 btnIgnore.classList.add('disabled');
             }
 
+            if (btnArm.style.display !== 'block') {
+                btnArm.style.display = 'block'
+            }
+
+            if (btnArmStandalone.style.display !== 'block') {
+                btnArmStandalone.style.display = 'block'
+            }
+
             updateElement(statusArmed, 'False');
             updateElement(btnArm, '🚨 Arm ICE');
+            updateElement(btnArmStandalone, '🚨 Arm Standalone');
         }
     }
 
@@ -465,6 +533,43 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    function startSound() {
+        stopSound(); // Clear any existing timeout to prevent multiple loops
+
+        // Function to play the sound and set up the next one
+        function playNextSound() {
+            warnAudio.play();
+        }
+
+        playNextSound(); // Start the first playback
+
+        // When the sound ends, re-start the loop
+        warnAudio.onended = () => {
+            // This will be called whenever the sound finishes playing
+            playNextSound();
+        };
+
+        // Set a timeout to automatically stop the sound after warnDuration
+        soundTimeoutId = setTimeout(() => {
+            stopSound();
+        }, warnDuration);
+    }
+
+    function stopSound() {
+        // Pause the audio and reset it to the beginning
+        warnAudio.pause();
+        warnAudio.currentTime = 0;
+
+        // Remove the onended event listener to stop the loop
+        warnAudio.onended = null;
+
+        // Check if a timeout ID exists
+        if (soundTimeoutId) {
+            clearTimeout(soundTimeoutId); // Clear the timeout
+            soundTimeoutId = null; // Clear the variable
+        }
+    }
+
     socket.on('connect', () => {
         heartbeatTimestamp = new Date();
         let payload = {
@@ -482,7 +587,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     socket.on('event_ignored', (data) => {
-        handleEvent(data['event'], true);
+        handleEvent(data['event'], !isArmedStandalone);
     });
 
     socket.on('ping', (data) => {
@@ -608,6 +713,26 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    btnArmStandalone.addEventListener('click', () => {
+        if (isArmedStandalone) {
+            modalConfirm(
+                'Disarm ICE Standalone',
+                'Do you want to disarm ICE Standalone mode?',
+                {
+                    confirmCallback: () => armStandalone(false)
+                }
+            );
+        } else {
+            modalConfirm(
+                'Arm ICE Standalone',
+                'Do you want to arm ICE Standalone mode?',
+                {
+                    confirmCallback: () => armStandalone(true)
+                }
+            );
+        }
+    });
+
     btnRecover.addEventListener('click', () => {
         if (!isArmed) {
             modalAlert('ERROR', 'ICE isn\'t armed.')
@@ -623,11 +748,19 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     btnIgnore.addEventListener('click', () => {
-        if (!isArmed) {
+        if (isArmed) {
+            triggerEvent('ignore', false);
+        } else if (isArmedStandalone) {
+            if (flashEventSource !== null) {
+                removeFlash();
+            }
+            if (videoOverlayEventSource !== null) {
+                removeVideoOverlay();
+            }
+            stopSound();
+        } else {
             modalAlert('ERROR', 'ICE isn\'t armed.');
-            return;
         }
-        triggerEvent('ignore', false);
     });
 
     modal.addEventListener('click', (event) => {
@@ -646,6 +779,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 releaseWakeLock();
             }
         }
+    });
+
+    btnClearLog.addEventListener('click', () => {
+        logContainer.innerHTML = '';
     });
 
     // WebRTC
