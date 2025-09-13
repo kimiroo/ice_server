@@ -15,10 +15,6 @@ body.is-armed {
     background-color: #000;
 }
 
-body.is-standalone {
-    background-color: #2A1D13;
-}
-
 body.is-disarmed {
     background-color: #0aab0b;
 }

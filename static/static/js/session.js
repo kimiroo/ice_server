@@ -392,7 +392,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function updatePage() {
-        if (!isArmed) {
+        if (!isArmed && !isArmedStandalone) {
             if (flashEventSource !== null) {
                 removeFlash();
             }
@@ -432,10 +432,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         } else if (isArmed) {
             if (document.body.classList.contains('is-disarmed') ||
-                document.body.classList.contains('is-standalone') ||
                 !document.body.classList.contains('is-armed')) {
                 document.body.classList.remove('is-disarmed');
-                document.body.classList.remove('is-standalone');
                 document.body.classList.add('is-armed');
             }
 
@@ -457,15 +455,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
         } else if (isArmedStandalone) {
             if (document.body.classList.contains('is-disarmed') ||
-                document.body.classList.contains('is-armed') ||
-                !document.body.classList.contains('is-standalone')) {
+                !document.body.classList.contains('is-armed')) {
                 document.body.classList.remove('is-disarmed');
-                document.body.classList.remove('is-armed');
-                document.body.classList.add('is-standalone');
+                document.body.classList.add('is-armed');
             }
 
-            if (btnKill.classList.contains('disabled') || btnIgnore.classList.contains('disabled')) {
-                btnKill.classList.remove('disabled');
+            if (!btnKill.classList.contains('disabled') || btnIgnore.classList.contains('disabled')) {
+                btnKill.classList.add('disabled');
                 btnIgnore.classList.remove('disabled');
             }
 
@@ -482,10 +478,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         } else {
             if (document.body.classList.contains('is-armed') ||
-                document.body.classList.contains('is-standalone') ||
                 !document.body.classList.contains('is-disarmed')) {
                 document.body.classList.remove('is-armed');
-                document.body.classList.remove('is-standalone');
                 document.body.classList.add('is-disarmed');
             }
 
