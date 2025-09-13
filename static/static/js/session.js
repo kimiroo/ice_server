@@ -64,6 +64,8 @@ document.addEventListener('DOMContentLoaded', () => {
     let oldClientListHA = [];
     let oldClientListHTML = [];
 
+    let lastOnvifTimestamp = new Date(0);
+
     const socket = io({
         transports: ['websocket', 'polling'],
         upgrade: true,
@@ -173,7 +175,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         lastEventID = eventObj['id'];
 
-        if (isIgnored) {
+        if (isIgnored && !isArmedStandalone) {
             if (eventObj['type'] === 'onvif') {
                 addLogEntry(`IGNORED_ONVIF: ${capitalizeFirstLetter(eventObj['event'])} ignored.`);
             } else if (eventObj['type'] === 'user') {
@@ -185,15 +187,53 @@ document.addEventListener('DOMContentLoaded', () => {
             } else if (eventObj['type'] === 'client') {
                 addLogEntry(`IGNORED_CLIENT: Client '${eventObj['data']['client']['name']}' ${eventObj['event']}.`)
             }
+
+        } else if (isArmedStandalone) {
+            if (eventObj['type'] === 'onvif' && !isPreviousEventValid('onvif')) {
+                addLogEntry(`ONVIF: ${capitalizeFirstLetter(eventObj['event'])} Detected!`, true);
+
+                const timeNow = new Date();
+                const timeDiff = timeNow.getTime() - lastOnvifTimestamp.getTime();
+
+                if (timeDiff > warnDuration) {
+                    lastOnvifTimestamp = new Date();
+
+                    flash(`${eventObj['type']}_${eventObj['event']}`);
+                    showVideoOverlay(`${eventObj['type']}_${eventObj['event']}`, `${eventObj['event'].toUpperCase()} DETECTED!`);
+
+                    if (checkboxWarnSound.checked) {
+                        startSound();
+                    }
+                }
+
+            } else if (eventObj['type'] === 'user' && !isEmitedEvent(eventObj['id'])) {
+                if (eventObj['event'] === 'kill') {
+                    addLogEntry(`USER: User broadcasted event '${eventObj['event'].toUpperCase()}' with mode '${eventObj['data']['killMode'].toUpperCase()}'.`, true);
+                } else {
+                    addLogEntry(`USER: User broadcasted event '${eventObj['event'].toUpperCase()}'.`, true);
+                }
+
+            } else if (eventObj['type'] === 'client') {
+                addLogEntry(`CLIENT: Client '${eventObj['data']['client']['name']}' ${eventObj['event']}.`);
+            }
+
         } else {
             if (eventObj['type'] === 'onvif' && !isPreviousEventValid('onvif')) {
                 receivedEventList.push(eventObj);
                 addLogEntry(`ONVIF: ${capitalizeFirstLetter(eventObj['event'])} Detected!`, true);
-                flash(`${eventObj['type']}_${eventObj['event']}`);
-                showVideoOverlay(`${eventObj['type']}_${eventObj['event']}`, `${eventObj['event'].toUpperCase()} DETECTED!`);
 
-                if (checkboxWarnSound.checked) {
-                    startSound();
+                const timeNow = new Date();
+                const timeDiff = timeNow.getTime() - lastOnvifTimestamp.getTime();
+
+                if (timeDiff > warnDuration) {
+                    lastOnvifTimestamp = new Date();
+
+                    flash(`${eventObj['type']}_${eventObj['event']}`);
+                    showVideoOverlay(`${eventObj['type']}_${eventObj['event']}`, `${eventObj['event'].toUpperCase()} DETECTED!`);
+
+                    if (checkboxWarnSound.checked) {
+                        startSound();
+                    }
                 }
 
             } else if (eventObj['type'] === 'user' && !isEmitedEvent(eventObj['id'])) {
@@ -534,7 +574,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function startSound() {
-        stopSound(); // Clear any existing timeout to prevent multiple loops
+        if (soundTimeoutId) {
+            return; // Prevent duplicate sound
+        }
 
         // Function to play the sound and set up the next one
         function playNextSound() {
