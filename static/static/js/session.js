@@ -631,13 +631,20 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     socket.on('get_result', (data) => {
-        isArmed = Boolean(data['isArmed']);
+        const newIsArmed = Boolean(data['isArmed']);
 
         const eventList = data['eventList'];
         const clientList = data['clientList'];
         let newClientListPC = [];
         let newClientListHA = [];
         let newClientListHTML = [];
+
+        let needUpdatePage = false;
+
+        if (isArmed !== newIsArmed) {
+            isArmed = newIsArmed;
+            needUpdatePage = true;
+        }
 
         clientList.forEach(client => {
             if (client['type'] === 'pc') {
@@ -648,9 +655,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 newClientListHTML.push(client);
             }
         });
-        clientListPC = newClientListPC;
-        clientListHA = newClientListHA;
-        clientListHTML = newClientListHTML;
+
+        if (clientListPC !== newClientListPC ||
+            clientListHA !== newClientListHA ||
+            clientListHTML !== newClientListHTML
+        ) {
+            clientListPC = newClientListPC;
+            clientListHA = newClientListHA;
+            clientListHTML = newClientListHTML;
+            needUpdatePage = true;
+        }
 
         let newEventList = [];
         let ackedEventList = [];
@@ -710,7 +724,9 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
-        updatePage();
+        if (needUpdatePage) {
+            updatePage();
+        }
     });
 
     socket.on("connect_error", (error) => {

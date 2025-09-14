@@ -33,20 +33,21 @@ class EventHandler:
     async def call_webhook(self, event: 'Event') -> None:
         request_kwargs = {}
 
+        replacements_map = {
+            '$event_id': str(event.id),
+            '$event_name': event.event,
+            '$event_type': event.type,
+            '$event_source': event.source,
+            '$event_data': event.data,
+            '$event_timestamp': event.timestamp.isoformat()
+        }
+        replaced_data = recursive_replace(CONFIG.webhook_data, replacements_map)
+
         # Append data
         if isinstance(CONFIG.webhook_data, dict):
-            replacements_map = {
-                '$event_id': str(event.id),
-                '$event_name': event.event,
-                '$event_type': event.type,
-                '$event_source': event.source,
-                '$event_data': event.data,
-                '$event_timestamp': event.timestamp.isoformat()
-            }
-            replaced_data = recursive_replace(CONFIG.webhook_data, replacements_map)
             request_kwargs['json'] = replaced_data
         elif isinstance(CONFIG.webhook_data, str):
-            request_kwargs['data'] = CONFIG.webhook_data
+            request_kwargs['data'] = replaced_data
 
         # Append headers
         if isinstance(CONFIG.webhook_headers, dict):
