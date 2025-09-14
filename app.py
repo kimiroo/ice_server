@@ -1,8 +1,16 @@
+import os
 import logging
+
+DEFAULT_LOG_LEVEL = 'INFO'
+
+log_level = os.environ.get('LOG_LEVEL', DEFAULT_LOG_LEVEL).upper()
+
+if log_level not in logging._nameToLevel:
+    log_level = DEFAULT_LOG_LEVEL
 
 logging.basicConfig(
     format='%(asctime)s [%(levelname)s] %(name)s - %(message)s',
-    level=logging.INFO,
+    level=log_level,
     datefmt='%Y-%m-%d %H:%M:%S',
 )
 

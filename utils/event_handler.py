@@ -82,7 +82,7 @@ class EventHandler:
         if (is_previous_event_valid and
             ((event.event in VALIDITY_CHECK_TARGET_EVENT_NAMES) or
              (event.type in VALIDITY_CHECK_TARGET_EVENT_TYPES))):
-            log.info(f'Event \'{event.event}\' ignored. (reason: Previous event still valid)')
+            log.debug(f'Event \'{event.event}\' ignored. (reason: Previous event still valid)')
             payload['reason'] = 'previous_valid'
             result = 'ignored'
         else:
@@ -92,7 +92,7 @@ class EventHandler:
                 result = 'success'
                 await self._clients.add_event(event)
             else:
-                log.info(f'Event \'{event.event}\' ignored. (reason: ICE is disarmed)')
+                log.debug(f'Event \'{event.event}\' ignored. (reason: ICE is disarmed)')
                 payload['reason'] = 'not_armed'
                 result = 'ignored'
 
