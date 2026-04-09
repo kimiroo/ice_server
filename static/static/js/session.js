@@ -107,15 +107,15 @@ document.addEventListener('DOMContentLoaded', () => {
         modal.classList.add('is-visible');
     }
 
-    function modalConfirm(title, message, options = {}) {
+    function modalConfirm(title, message, options = {}, confirmText = 'Confirm', cancelText = 'Cancel') {
         const buttons = [
             {
-                text: 'Confirm',
+                text: confirmText,
                 type: 'action',
                 callback: options.confirmCallback,
             },
             {
-                text: 'Cancel',
+                text: cancelText,
                 type: '',
                 callback: options.cancelCallback,
             }
@@ -969,7 +969,9 @@ document.addEventListener('DOMContentLoaded', () => {
         {
             confirmCallback: () => checkboxWarnSound.checked = true,
             cancelCallback: () => checkboxWarnSound.checked = false
-        }
+        },
+        'Yes',
+        'No'
     )
 
     setTimeout(() => { // Wait 1 second for page to initialize
