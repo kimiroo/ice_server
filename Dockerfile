@@ -3,11 +3,13 @@ FROM python:3.13-alpine
 ENV HOST=0.0.0.0
 ENV PORT=28080
 
-COPY . /app
 WORKDIR /app
+COPY requirements.txt /app
 
 RUN apk add --no-cache curl build-base python3-dev
 RUN pip install -r requirements.txt
+
+COPY . /app
 
 EXPOSE $PORT
 
