@@ -597,7 +597,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         let playLoopCount = 1
         warnAudio.onended = () => {
-            if (playLoopCount <= 3) {
+            if (playLoopCount <= 1) {
                 playLoopCount ++;
                 playNextSound();
             }
