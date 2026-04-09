@@ -3,6 +3,7 @@ const searchParams = new URLSearchParams(paramsString);
 
 const clientName = searchParams.get('clientName');
 const warnDuration = 10 * 1000; // 10 seconds
+const soundWarnDuration = 5 * 1000; // 5 seconds
 
 const warnAudio = new Audio('/static/media/warn.wav');
 let soundTimeoutId;
@@ -601,10 +602,10 @@ document.addEventListener('DOMContentLoaded', () => {
             playNextSound();
         };
 
-        // Set a timeout to automatically stop the sound after warnDuration
+        // Set a timeout to automatically stop the sound after soundWarnDuration
         soundTimeoutId = setTimeout(() => {
             stopSound();
-        }, warnDuration);
+        }, soundWarnDuration);
     }
 
     function stopSound() {
