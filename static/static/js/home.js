@@ -16,7 +16,7 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             const params = new URLSearchParams();
             params.append('clientName', clientName.trim());
-            window.location.href = `/session?${params.toString()}`;
+            window.location.href = `/session/?${params.toString()}`;
         }
     });
 });
