@@ -35,6 +35,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const videoLoadingMessage = document.getElementById('videoLoadingMessage');
     const videoOverlayElem = document.getElementById('videoOverlay');
     const videoOverlayMessage = document.getElementById('videoOverlayMessage');
+    const clockOverlay = document.getElementById('clockOverlay');
 
     const statusConnected = document.getElementById('statusConnected');
     const statusCamera = document.getElementById('statusCamera');
@@ -286,12 +287,14 @@ document.addEventListener('DOMContentLoaded', () => {
         if (state === 'connected') {
             videoElem.style.display = 'block';
             videoLoadingMessage.style.display = 'none';
+            clockOverlay.style.display = 'block';
         } else {
             if (state === 'disconnected' || state === 'failed') {
                 videoLoadingMessage.innerText = '📹 Camera Feed Disconnected. Retrying...';
             }
             videoElem.style.display = 'none';
             videoLoadingMessage.style.display = 'block';
+            clockOverlay.style.display = 'none';
         }
     }
 
@@ -389,6 +392,16 @@ document.addEventListener('DOMContentLoaded', () => {
         } else if (isHTML && element.innerHTML != newContent) {
             element.innerHTML = newContent;
         }
+    }
+
+    function formatClock() {
+        const now = new Date();
+
+        const hours = String(now.getHours()).padStart(2, '0');
+        const minutes = String(now.getMinutes()).padStart(2, '0');
+        const seconds = String(now.getSeconds()).padStart(2, '0');
+
+        return `${hours}:${minutes}:${seconds}`;
     }
 
     function updatePage() {
@@ -500,6 +513,9 @@ document.addEventListener('DOMContentLoaded', () => {
             updateElement(btnArm, '🚨 Arm ICE');
             updateElement(btnArmStandalone, '🚨 Arm Standalone');
         }
+
+        // Update Clock Overlay
+        clockOverlay.innerText = formatClock();
     }
 
     function updateHeartbeat() {

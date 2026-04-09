@@ -21,11 +21,12 @@
 
         <div class="left-column">
             <div class="video-section">
-                <div id="videoLoadingMessage" class="video-feed">
+                <div class="video-feed" id="videoLoadingMessage">
                     📹 Loading Camera Feed...
                 </div>
                 <video id="video" class="video-feed" style="display: none;" autoplay playsinline muted controls controlslist="nodownload">
                 </video>
+                <div class="clock-overlay" id="clockOverlay"></div>
                 <div class="video-overlay" id="videoOverlay">
                     🚨 <span id="videoOverlayMessage"></span> 🚨
                 </div>
