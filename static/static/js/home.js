@@ -11,10 +11,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     btnStart.addEventListener('click', () => {
         const clientName = inputClientName.value;
-        if (clientName === '') {
+        if (clientName.trim() === '') {
             alert('Client name cannot be empty.');
         } else {
-            window.location.href = `/session?clientName=${clientName}`;
+            const params = new URLSearchParams();
+            params.append('clientName', clientName.trim());
+            window.location.href = `/session?${params.toString()}`;
         }
     });
 });
