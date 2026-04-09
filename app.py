@@ -21,6 +21,7 @@ import uvicorn
 import socketio
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from utils.config import CONFIG
 from utils.states import state
@@ -39,7 +40,9 @@ sio = socketio.AsyncServer(
     async_mode='asgi',
     cors_allowed_origins='*')
 
-app = FastAPI()
+app = FastAPI(redirect_slashes=False)
+app.add_middleware(ProxyHeadersMiddleware, trusted_hosts=['*'])
+
 clients = Clients()
 event_handler = EventHandler(sio, clients)
 onvif_monitor = ONVIFMonitor(event_handler)
@@ -57,7 +60,7 @@ async def get_go2rtc_config():
 async def get_health():
     return 'I\'m healthy!'
 
-app.mount('/socket.io', socketio.ASGIApp(sio, other_asgi_app=app))
+app.mount('/socket.io', socketio.ASGIApp(sio))
 app.mount('/', StaticFiles(directory='static', html=True), name='static')
 
 @sio.on('connect')
@@ -199,13 +202,14 @@ async def main():
             if CONFIG.onvif_enabled:
                 asyncio.create_task(onvif_monitor.onvif_event_monitoring_worker())
 
-            log.info(f'Listening at http://{CONFIG.host}:{CONFIG.port}...')
             uvicorn_config = uvicorn.Config(app,
                                             host=HOST,
                                             port=PORT,
                                             log_config=None,
                                             log_level=None,
-                                            access_log=False)
+                                            access_log=False,
+                                            proxy_headers=True,
+                                            forwarded_allow_ips=['*'])
             uvicorn_server = uvicorn.Server(uvicorn_config)
             await uvicorn_server.serve()
         except [KeyboardInterrupt, asyncio.exceptions.CancelledError]:
