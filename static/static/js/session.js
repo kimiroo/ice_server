@@ -962,6 +962,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
     statusClientName.innerText = clientName;
 
+    modalConfirm(
+        'Enable sound',
+        'Enable warning sound?',
+        {
+            confirmCallback: () => checkboxWarnSound.checked = true,
+            cancelCallback: () => checkboxWarnSound.checked = false
+        }
+    )
+
     setTimeout(() => { // Wait 1 second for page to initialize
         setInterval(() => {
             updateHeartbeat();
