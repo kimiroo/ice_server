@@ -3,7 +3,7 @@ const searchParams = new URLSearchParams(paramsString);
 
 const clientName = searchParams.get('clientName');
 const warnDuration = 10 * 1000; // 10 seconds
-const soundWarnDuration = 5 * 1000; // 5 seconds
+const soundWarnDuration = 2.5 * 1000; // 2.5 seconds
 
 const warnAudio = new Audio('/static/media/warn.wav');
 let soundTimeoutId;
