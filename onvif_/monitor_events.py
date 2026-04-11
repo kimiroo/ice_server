@@ -145,7 +145,7 @@ class ONVIFMonitor:
 
                                         ice_event = Event(
                                             event_id=str(uuid.uuid4()),
-                                            event_event=event.event_name,
+                                            event_event='motion',
                                             event_type='onvif',
                                             event_source='server'
                                         )
